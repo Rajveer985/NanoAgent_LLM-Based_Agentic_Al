@@ -1,3 +1,6 @@
+// Side Panel Script for NanoGPT Agent
+// This script implements a simple browser agent that can interact with web pages based on user goals.
+
 const log = document.getElementById("log");
 const runBtn = document.getElementById("run");
 const stopBtn = document.getElementById("stop");
