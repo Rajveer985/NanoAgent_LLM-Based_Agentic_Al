@@ -153,15 +153,28 @@
                 const res = await fetch('http://localhost:3000/api/whatsapp-qr');
                 const data = await res.json();
 
-                loadingBox.style.display = 'none';
-
-                if (data.connected) {
-                    qrBox.style.display = 'none';
-                    connectedBox.style.display = 'block';
-                } else if (data.qr) {
+                if (data.error) {
+                    loadingBox.style.display = 'block';
+                    loadingBox.style.color = '#f87171';
+                    loadingBox.textContent = 'Error: ' + data.error;
                     connectedBox.style.display = 'none';
-                    qrBox.style.display = 'block';
-                    qrImg.src = data.qr;
+                    qrBox.style.display = 'none';
+                } else if (data.initializing) {
+                    loadingBox.style.display = 'block';
+                    loadingBox.style.color = '#3b82f6';
+                    loadingBox.textContent = 'Initializing WhatsApp Browser...';
+                    connectedBox.style.display = 'none';
+                    qrBox.style.display = 'none';
+                } else {
+                    loadingBox.style.display = 'none';
+                    if (data.connected) {
+                        qrBox.style.display = 'none';
+                        connectedBox.style.display = 'block';
+                    } else if (data.qr) {
+                        connectedBox.style.display = 'none';
+                        qrBox.style.display = 'block';
+                        qrImg.src = data.qr;
+                    }
                 }
             } catch (e) {
                 loadingBox.style.display = 'block';

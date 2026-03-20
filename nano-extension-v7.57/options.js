@@ -171,37 +171,44 @@ async function pollWhatsAppStatus() {
         const res = await fetch('http://localhost:3000/api/whatsapp-qr');
         const data = await res.json();
 
-        loadingBox.style.display = 'none';
-
-        if (data.connected) {
-            qrBox.style.display = 'none';
-            connectedBox.style.display = 'block';
-
-            if (document.activeElement !== targetInput && document.activeElement !== groupSelect) {
-                targetInput.value = data.target || '';
-            }
-
-            // Populate groups if we haven't already
-            if (!groupsLoaded && data.groups && data.groups.length > 0) {
-                data.groups.forEach(g => {
-                    const opt = document.createElement('option');
-                    opt.value = g.id;
-                    opt.textContent = g.name;
-                    groupSelect.appendChild(opt);
-                });
-                groupsLoaded = true;
-            }
-
-            // Auto-sync dropdown if target matches a group ID
-            if (document.activeElement !== groupSelect) {
-                const optionExists = Array.from(groupSelect.options).some(opt => opt.value === targetInput.value);
-                groupSelect.value = optionExists ? targetInput.value : "";
-            }
-
-        } else if (data.qr) {
+        if (data.error) {
+            loadingBox.style.display = 'block';
+            loadingBox.textContent = 'Error: ' + data.error;
+            loadingBox.style.color = '#f87171';
             connectedBox.style.display = 'none';
-            qrBox.style.display = 'block';
-            qrImg.src = data.qr;
+            qrBox.style.display = 'none';
+        } else if (data.initializing) {
+            loadingBox.style.display = 'block';
+            loadingBox.textContent = 'Initializing WhatsApp Browser...';
+            loadingBox.style.color = '#3b82f6';
+            connectedBox.style.display = 'none';
+            qrBox.style.display = 'none';
+        } else {
+            loadingBox.style.display = 'none';
+            if (data.connected) {
+                qrBox.style.display = 'none';
+                connectedBox.style.display = 'block';
+                if (document.activeElement !== targetInput && document.activeElement !== groupSelect) {
+                    targetInput.value = data.target || '';
+                }
+                if (!groupsLoaded && data.groups && data.groups.length > 0) {
+                    data.groups.forEach(g => {
+                        const opt = document.createElement('option');
+                        opt.value = g.id;
+                        opt.textContent = g.name;
+                        groupSelect.appendChild(opt);
+                    });
+                    groupsLoaded = true;
+                }
+                if (document.activeElement !== groupSelect) {
+                    const optionExists = Array.from(groupSelect.options).some(opt => opt.value === targetInput.value);
+                    groupSelect.value = optionExists ? targetInput.value : "";
+                }
+            } else if (data.qr) {
+                connectedBox.style.display = 'none';
+                qrBox.style.display = 'block';
+                qrImg.src = data.qr;
+            }
         }
     } catch (e) {
         loadingBox.textContent = 'Backend server offline. Run `node server.js` to enable WhatsApp bridge.';

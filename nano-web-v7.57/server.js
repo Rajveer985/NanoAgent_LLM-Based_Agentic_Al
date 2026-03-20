@@ -19,6 +19,8 @@ let pendingRemoteTask = null;
 let WHATSAPP_TARGET = '';
 let waQR = null;
 let waConnected = false;
+let waInitializing = true;
+let waError = null;
 
 const os = require('os');
 const bridgeDataDir = path.join(os.homedir(), '.nanobridge_data');
@@ -48,15 +50,25 @@ const waClient = new Client({
 });
 
 waClient.on('qr', async (qr) => {
+    waInitializing = false;
     waQR = await qrcode.toDataURL(qr);
     console.log('📱 QR CODE RECEIVED - Ready for scan!');
 });
 
-waClient.on('authenticated', () => console.log('🔐 WhatsApp Authenticated! Session saved.'));
-waClient.on('auth_failure', () => console.error('❌ WhatsApp auth failed.'));
+waClient.on('authenticated', () => {
+    waInitializing = false;
+    console.log('🔐 WhatsApp Authenticated! Session saved.');
+});
+waClient.on('auth_failure', (msg) => {
+    waInitializing = false;
+    waError = 'Auth failed: ' + msg;
+    console.error('❌ WhatsApp auth failed.', msg);
+});
 
 waClient.on('ready', async () => {
     waConnected = true;
+    waInitializing = false;
+    waError = null;
     waQR = null;
     console.log('✅ WhatsApp Client Ready!');
     console.log('📱 Loading WhatsApp groups...');
@@ -91,7 +103,11 @@ waClient.on('message_create', async msg => {
     }
 });
 
-waClient.initialize();
+waClient.initialize().catch(err => {
+    waInitializing = false;
+    waError = 'Failed to launch browser: ' + err.message;
+    console.error('❌ WhatsApp init error:', err);
+});
 
 // ======== ROUTES ========
 
@@ -102,7 +118,7 @@ app.get('/api/auth-status', (req, res) => {
 
 // 📱 WhatsApp Status & Target APIs
 app.get('/api/whatsapp-qr', (req, res) => {
-    res.json({ connected: waConnected, qr: waQR, target: WHATSAPP_TARGET, groups: whatsappGroups });
+    res.json({ connected: waConnected, qr: waQR, target: WHATSAPP_TARGET, groups: whatsappGroups, initializing: waInitializing, error: waError });
 });
 
 app.post('/api/whatsapp-target-manual', (req, res) => {
