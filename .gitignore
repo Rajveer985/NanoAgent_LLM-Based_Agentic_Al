@@ -1,0 +1,14 @@
+node_modules/
+*.mov
+*.mp4
+*.log
+.env
+.DS_Store
+
+# Loose files (not in assets/)
+Base setup.png
+Screenshot *.png
+*.zip
+
+# Electron build output
+nano-web-v7.57/dist/

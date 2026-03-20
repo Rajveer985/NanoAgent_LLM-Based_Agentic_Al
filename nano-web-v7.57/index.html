@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="UTF-8">
+    <title>NanoBridge</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #0f172a;
+            color: #e2e8f0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 320px;
+            text-align: center;
+            background-color: #1e293b;
+            padding: 25px;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+            border: 1px solid #334155;
+        }
+
+        .title {
+            font-size: 20px;
+            font-weight: bold;
+            color: #f8fafc;
+            margin-bottom: 5px;
+        }
+
+        .subtitle {
+            font-size: 13px;
+            color: #94a3b8;
+            margin-bottom: 25px;
+        }
+
+        .loading {
+            color: #3b82f6;
+            font-weight: 500;
+            font-size: 14px;
+            margin: 20px 0;
+            animation: pulse 1.5s infinite;
+        }
+
+        @keyframes pulse {
+            0% {
+                opacity: 0.5;
+            }
+
+            50% {
+                opacity: 1;
+            }
+
+            100% {
+                opacity: 0.5;
+            }
+        }
+
+        .qr-box {
+            display: none;
+            background: white;
+            padding: 10px;
+            border-radius: 8px;
+            margin: 0 auto 20px auto;
+            width: fit-content;
+        }
+
+        .qr-box img {
+            width: 200px;
+            height: 200px;
+        }
+
+        .connected-box {
+            display: none;
+            background: rgba(34, 197, 94, 0.1);
+            border: 1px solid rgba(34, 197, 94, 0.2);
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+
+        .connected-text {
+            color: #4ade80;
+            font-weight: bold;
+            font-size: 15px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+
+        .dot {
+            width: 8px;
+            height: 8px;
+            background-color: #22c55e;
+            border-radius: 50%;
+            box-shadow: 0 0 8px #22c55e;
+            animation: pulse 2s infinite;
+        }
+
+        .footer {
+            font-size: 11px;
+            color: #64748b;
+            margin-top: 15px;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <div class="title">📱 NanoBridge</div>
+        <div class="subtitle">WhatsApp Remote Server</div>
+
+        <div id="loading" class="loading">
+            Initializing Services...
+        </div>
+
+        <div id="qr-box" class="qr-box">
+            <div style="color: #0f172a; font-weight: bold; font-size: 13px; margin-bottom: 10px;">Scan to Link WhatsApp
+            </div>
+            <img id="qr-img" src="" alt="QR Code">
+        </div>
+
+        <div id="connected-box" class="connected-box">
+            <div class="connected-text">
+                <div class="dot"></div> Server Online
+            </div>
+            <div style="font-size: 12px; color: #94a3b8; margin-top: 10px;">
+                WhatsApp client is actively connected to extensions on this machine.
+            </div>
+        </div>
+
+        <div class="footer">
+            Leave this window running to enable remote API commands from your phone.
+        </div>
+    </div>
+
+    <script>
+        const loadingBox = document.getElementById('loading');
+        const qrBox = document.getElementById('qr-box');
+        const qrImg = document.getElementById('qr-img');
+        const connectedBox = document.getElementById('connected-box');
+
+        async function pollStatus() {
+            try {
+                const res = await fetch('http://localhost:3000/api/whatsapp-qr');
+                const data = await res.json();
+
+                loadingBox.style.display = 'none';
+
+                if (data.connected) {
+                    qrBox.style.display = 'none';
+                    connectedBox.style.display = 'block';
+                } else if (data.qr) {
+                    connectedBox.style.display = 'none';
+                    qrBox.style.display = 'block';
+                    qrImg.src = data.qr;
+                }
+            } catch (e) {
+                loadingBox.style.display = 'block';
+                loadingBox.style.color = '#f87171';
+                loadingBox.textContent = 'Backend starting up...';
+            }
+        }
+
+        setInterval(pollStatus, 2000);
+        pollStatus();
+    </script>
+</body>
+
+</html>
