@@ -376,12 +376,11 @@ runBtn.onclick = async () => {
             const plan = await callLLM(goal, elements, apiKey, activeModel, actionHistory, agentMemory, tab.url, selectedTemp, selectedProvider, baseUrl, tabsListStr);
             write(plan.reasoning, "ai");
 
-            if (plan.is_goal_met === true || plan.action === "finish") {
+            async function wrapUpTask() {
                 write(`[DONE] Agent confirms task is complete: ${plan.value || ""}`, "debug");
                 if (agentMemory.length > 0) {
                     agentMemory.forEach(m => write(m, "result-card"));
 
-                    // 📱 V7.57: Send extraction data to WhatsApp
                     try {
                         const waRes = await fetch("http://localhost:3000/api/whatsapp-send", {
                             method: "POST",
@@ -397,6 +396,13 @@ runBtn.onclick = async () => {
                         write("[WHATSAPP] Delivery skipped.", "debug");
                     }
                 }
+            }
+
+            const isClosingAction = plan.action === "finish" || plan.action === "none" || plan.action === "complete";
+            const deferredBreak = plan.is_goal_met === true && !isClosingAction;
+
+            if (isClosingAction || (plan.is_goal_met === true && !deferredBreak)) {
+                await wrapUpTask();
                 break;
             }
 
@@ -515,34 +521,104 @@ runBtn.onclick = async () => {
             }
 
             else if (plan.action === "inject_data") {
-                write(`Executing [CHEAT CODE: FOCUS + PASTE] into active cell...`, "debug");
-                await chrome.scripting.executeScript({
+                write(`Executing [SPREADSHEET INJECTION]...`, "debug");
+                const execResults = await chrome.scripting.executeScript({
                     target: { tabId: tab.id },
                     world: "MAIN",
-                    func: (val) => {
-                        let centerX = window.innerWidth / 2;
-                        let centerY = window.innerHeight / 2;
-                        let canvas = document.elementFromPoint(centerX, centerY);
+                    func: async (val) => {
+                        return new Promise(async (resolve) => {
+                            // 1. Identify Target Coordinates (Look for Sheets Active Cell first)
+                            let targetX = window.innerWidth / 2;
+                            let targetY = window.innerHeight / 2;
 
-                        if (canvas) {
-                            canvas.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, clientX: centerX, clientY: centerY }));
-                            canvas.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, clientX: centerX, clientY: centerY }));
-                        }
+                            const activeCell = document.querySelector(".autofill-cover") || 
+                                               document.querySelector(".cell-selection") || 
+                                               document.querySelector(".active-cell-border");
+                            
+                            if (activeCell) {
+                                const rect = activeCell.getBoundingClientRect();
+                                targetX = rect.left + rect.width / 2;
+                                targetY = rect.top + rect.height / 2;
+                            }
 
-                        setTimeout(() => {
+                            // --- GHOST MOUSE INJECTION ---
+                            let cursor = document.getElementById("nano-ghost-mouse");
+                            if (!cursor) {
+                                cursor = document.createElement("div");
+                                cursor.id = "nano-ghost-mouse";
+                                cursor.innerHTML = `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M5.5 3.21V20.8c0 .45.54.67.85.35l4.86-4.86a.5.5 0 01.35-.15h6.87c.45 0 .67-.54.35-.85L6.35 2.86a.5.5 0 00-.85.35z" fill="#111" stroke="#FFF" stroke-width="1.5"/></svg>`;
+                                cursor.style.position = "fixed"; cursor.style.zIndex = "2147483647"; cursor.style.pointerEvents = "none";
+                                cursor.style.transition = "transform 0.5s cubic-bezier(0.22, 1, 0.36, 1)";
+                                cursor.style.transform = `translate(${window.innerWidth}px, ${window.innerHeight}px)`;
+                                document.body.appendChild(cursor);
+                                cursor.getBoundingClientRect();
+                            }
+                            
+                            let aborted = false;
+                            const abortHandler = (e) => {
+                                if (e.isTrusted && (Math.abs(e.movementX) > 1 || Math.abs(e.movementY) > 1)) {
+                                    aborted = true; cursor.style.display = "none";
+                                    document.removeEventListener("mousemove", abortHandler);
+                                }
+                            };
+                            document.addEventListener("mousemove", abortHandler);
+                            cursor.style.display = "block";
+                            cursor.style.transform = `translate(${targetX}px, ${targetY}px)`;
+                            
+                            await new Promise(r => setTimeout(r, 600));
+                            document.removeEventListener("mousemove", abortHandler);
+                            if (aborted) { resolve({ aborted: true }); return; }
+                            // --- END GHOST MOUSE ---
+
+                            // 2. Click the specific coordinate to guarantee canvas focus
+                            let canvas = document.elementFromPoint(targetX, targetY);
+                            let activeTarget = canvas || document.activeElement || document.body;
+                            
+                            if (canvas) {
+                                canvas.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, clientX: targetX, clientY: targetY }));
+                                canvas.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, clientX: targetX, clientY: targetY }));
+                                await new Promise(r => setTimeout(r, 100)); // give canvas time to wake up
+                            }
+
+                            // 3. Dispatch Enter key to open the cell editor manually on Spreadsheets
+                            activeTarget.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', keyCode: 13, bubbles: true, composed: true }));
+                            await new Promise(r => setTimeout(r, 100));
+
+                            // 4. Construct the mock Clipboard payload
+                            const dataTransfer = new DataTransfer();
+                            dataTransfer.setData('text/plain', val);
+                            const pasteEvent = new ClipboardEvent('paste', {
+                                clipboardData: dataTransfer,
+                                bubbles: true,
+                                cancelable: true,
+                                composed: true
+                            });
+
+                            // 5. Fire the paste payload
+                            (document.activeElement || activeTarget).dispatchEvent(pasteEvent);
+                            
+                            // If it's a regular contenteditable or input, also try execCommand as fallback
+                            try { document.execCommand('insertText', false, val); } catch(e) {}
+
+                            await new Promise(r => setTimeout(r, 200));
+
+                            // 6. Dispatch Enter key to commit the cell
+                            (document.activeElement || activeTarget).dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', keyCode: 13, bubbles: true, composed: true }));
                             document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', keyCode: 13, bubbles: true, composed: true }));
 
-                            setTimeout(() => {
-                                document.execCommand('insertText', false, val);
-
-                                setTimeout(() => {
-                                    document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', keyCode: 13, bubbles: true, composed: true }));
-                                }, 200);
-                            }, 200);
-                        }, 200);
+                            resolve({ success: true });
+                        });
                     },
                     args: [safePlanValue || ""]
                 });
+
+                if (execResults && execResults[0] && execResults[0].result && execResults[0].result.aborted) {
+                    write(`[!] Agent interrupted by human mouse movement!`, "error");
+                    actionHistory.push(`[SYSTEM OVERRIDE] The human user moved the physical mouse and aborted your action! Pick a new target or change your plan.`);
+                    await new Promise(r => setTimeout(r, 2000));
+                    continue;
+                }
+
                 await new Promise(r => setTimeout(r, 3000));
             }
 
@@ -557,49 +633,85 @@ runBtn.onclick = async () => {
                     }
                     write(`Executing [${plan.action.toUpperCase()}] on [${target.text.substring(0, 20)}]`, "debug");
 
-                    await chrome.scripting.executeScript({
+                    const execResults = await chrome.scripting.executeScript({
                         target: { tabId: tab.id },
                         world: "MAIN",
                         func: async (sel, action, value, elementHref) => {
-                            const el = document.querySelector(sel);
-                            if (!el) {
-                                console.error("[NanoAgent] Element not found for selector:", sel);
-                                return;
-                            }
-                            let tEl = el.closest('button, a, [role="button"], input, [contenteditable="true"]') || el;
-                            tEl.scrollIntoView({ block: 'center', behavior: 'smooth' });
-                            tEl.focus();
-
-                            if (action === "type") {
-                                const delay = (ms) => new Promise(r => setTimeout(r, ms));
-                                let nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value")?.set;
-                                let nativeTextAreaValueSetter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, "value")?.set;
-
-                                if (tEl.isContentEditable) {
-                                    tEl.focus();
-                                    document.execCommand('selectAll', false, null);
-                                    document.execCommand('delete', false, null);
-                                    for (let i = 0; i < value.length; i++) {
-                                        document.execCommand('insertText', false, value[i]);
-                                        await delay(30);
-                                    }
-                                } else {
-                                    const setter = tEl.tagName === 'TEXTAREA' ? nativeTextAreaValueSetter : nativeInputValueSetter;
-                                    // Clear field first
-                                    if (setter) { setter.call(tEl, ''); } else { tEl.value = ''; }
-                                    tEl.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
-
-                                    // Type character by character
-                                    for (let i = 0; i < value.length; i++) {
-                                        const partial = value.substring(0, i + 1);
-                                        if (setter) { setter.call(tEl, partial); } else { tEl.value = partial; }
-                                        tEl.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
-                                        await delay(30);
-                                    }
+                            return new Promise(async (resolve) => {
+                                const el = document.querySelector(sel);
+                                if (!el) {
+                                    console.error("[NanoAgent] Element not found for selector:", sel);
+                                    resolve({ error: "Element not found" }); return;
                                 }
+                                let tEl = el.closest('button, a, [role="button"], input, [contenteditable="true"]') || el;
+                                tEl.scrollIntoView({ block: 'center', behavior: 'smooth' });
+                                
+                                await new Promise(r => setTimeout(r, 400));
+                                const rect = tEl.getBoundingClientRect();
+                                const centerX = rect.left + rect.width / 2;
+                                const centerY = rect.top + rect.height / 2;
+                                
+                                let cursor = document.getElementById("nano-ghost-mouse");
+                                if (!cursor) {
+                                    cursor = document.createElement("div");
+                                    cursor.id = "nano-ghost-mouse";
+                                    cursor.innerHTML = `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M5.5 3.21V20.8c0 .45.54.67.85.35l4.86-4.86a.5.5 0 01.35-.15h6.87c.45 0 .67-.54.35-.85L6.35 2.86a.5.5 0 00-.85.35z" fill="#111" stroke="#FFF" stroke-width="1.5"/></svg>`;
+                                    cursor.style.position = "fixed"; cursor.style.zIndex = "2147483647"; cursor.style.pointerEvents = "none";
+                                    cursor.style.transition = "transform 0.5s cubic-bezier(0.22, 1, 0.36, 1)";
+                                    cursor.style.transform = `translate(${window.innerWidth}px, ${window.innerHeight}px)`;
+                                    document.body.appendChild(cursor);
+                                    cursor.getBoundingClientRect();
+                                }
+                                
+                                let aborted = false;
+                                const abortHandler = (e) => {
+                                    if (e.isTrusted && (Math.abs(e.movementX) > 1 || Math.abs(e.movementY) > 1)) {
+                                        aborted = true; cursor.style.display = "none";
+                                        document.removeEventListener("mousemove", abortHandler);
+                                    }
+                                };
+                                document.addEventListener("mousemove", abortHandler);
+                                cursor.style.display = "block";
+                                cursor.style.transform = `translate(${centerX}px, ${centerY}px)`;
+                                
+                                await new Promise(r => setTimeout(r, 600));
+                                document.removeEventListener("mousemove", abortHandler);
+                                
+                                if (aborted) { resolve({ aborted: true }); return; }
 
-                                tEl.dispatchEvent(new Event('change', { bubbles: true, composed: true }));
-                            } else {
+                                tEl.focus();
+
+                                if (action === "type") {
+                                    const delay = (ms) => new Promise(r => setTimeout(r, ms));
+                                    let nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value")?.set;
+                                    let nativeTextAreaValueSetter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, "value")?.set;
+
+                                    if (tEl.isContentEditable) {
+                                        tEl.focus();
+                                        document.execCommand('selectAll', false, null);
+                                        document.execCommand('delete', false, null);
+                                        for (let i = 0; i < value.length; i++) {
+                                            document.execCommand('insertText', false, value[i]);
+                                            await delay(30);
+                                        }
+                                    } else {
+                                        const setter = tEl.tagName === 'TEXTAREA' ? nativeTextAreaValueSetter : nativeInputValueSetter;
+                                        // Clear field first
+                                        if (setter) { setter.call(tEl, ''); } else { tEl.value = ''; }
+                                        tEl.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
+
+                                        // Type character by character
+                                        for (let i = 0; i < value.length; i++) {
+                                            const partial = value.substring(0, i + 1);
+                                            if (setter) { setter.call(tEl, partial); } else { tEl.value = partial; }
+                                            tEl.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
+                                            await delay(30);
+                                        }
+                                    }
+
+                                    tEl.dispatchEvent(new Event('change', { bubbles: true, composed: true }));
+                                    resolve({ success: true });
+                                } else {
                                 const originalOpen = window.open;
                                 window.open = function (url) { window.location.href = url; return window; };
                                 const evtOpts = { bubbles: true, composed: true, cancelable: true, view: window };
@@ -627,16 +739,32 @@ runBtn.onclick = async () => {
                                 } else if (tEl.tagName === 'A' && tEl.href) {
                                     setTimeout(() => { if (!window.location.href.includes(tEl.href)) window.location.href = tEl.href; }, 800);
                                 }
+                                resolve({ success: true });
                             }
+                            });
                         },
                         args: [target.sel || "", plan.action || "", safePlanValue || "", target.fullHref || ""]
                     });
+
+                    if (execResults && execResults[0] && execResults[0].result && execResults[0].result.aborted) {
+                        write(`[!] Agent interrupted by human mouse movement!`, "error");
+                        actionHistory.push(`[SYSTEM OVERRIDE] The human user moved the physical mouse and aborted your action! Pick a new target or change your plan.`);
+                        await new Promise(r => setTimeout(r, 2000));
+                        continue;
+                    }
+
                     await new Promise(r => setTimeout(r, 3000));
                 }
             }
 
             write("[WAIT] API Cooldown (3s)...", "debug");
             await new Promise(r => setTimeout(r, 3000));
+
+            // Deferred finalization: The LLM declared the task complete but we had to execute its final action first!
+            if (deferredBreak) {
+                await wrapUpTask();
+                break;
+            }
 
         } catch (err) {
             // 💥 V7.57: EXPLICIT ERROR ROUTING 💥
