@@ -426,7 +426,7 @@ runBtn.onclick = async () => {
                     write(`[STOP] Hard aborting... Model ignored 3 FATAL BLOCK messages! Shutting down to protect API quota.`, "error");
                     break;
                 }
-                
+
                 write(`[!] Loop Trap Detected. Forcing reroute...`, "error");
                 let trapMsg = `[SYSTEM FATAL BLOCK]: You are caught in a loop trying to ${plan.action} on index ${plan.target_index}. THIS IS A TRAP. Pick a new target or change your action.`;
                 if (plan.action === "new_tab") trapMsg = `[SYSTEM FATAL BLOCK]: You are endlessly spawning background tabs! STOP. You MUST use 'switch_tab' (using the Tab Number from AVAILABLE TABS) to move your vision to the tabs you just created before you do anything else!`;
@@ -544,86 +544,98 @@ runBtn.onclick = async () => {
                     world: "MAIN",
                     func: async (val) => {
                         return new Promise(async (resolve) => {
-                            // 1. Identify Target Coordinates (Look for Sheets Active Cell first)
-                            let targetX = window.innerWidth / 2;
-                            let targetY = window.innerHeight / 2;
+                            try {
+                                // 1. Identify Target Coordinates (Look for Sheets Active Cell first)
+                                let targetX = window.innerWidth / 2;
+                                let targetY = window.innerHeight / 2;
 
-                            const activeCell = document.querySelector(".autofill-cover") || 
-                                               document.querySelector(".cell-selection") || 
-                                               document.querySelector(".active-cell-border");
-                            
-                            if (activeCell) {
-                                const rect = activeCell.getBoundingClientRect();
-                                targetX = rect.left + rect.width / 2;
-                                targetY = rect.top + rect.height / 2;
-                            }
+                                const activeCell = document.querySelector(".autofill-cover") ||
+                                    document.querySelector(".cell-selection") ||
+                                    document.querySelector(".active-cell-border");
 
-                            // --- GHOST MOUSE INJECTION ---
-                            let cursor = document.getElementById("nano-ghost-mouse");
-                            if (!cursor) {
-                                cursor = document.createElement("div");
-                                cursor.id = "nano-ghost-mouse";
-                                cursor.innerHTML = `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M5.5 3.21V20.8c0 .45.54.67.85.35l4.86-4.86a.5.5 0 01.35-.15h6.87c.45 0 .67-.54.35-.85L6.35 2.86a.5.5 0 00-.85.35z" fill="#111" stroke="#FFF" stroke-width="1.5"/></svg>`;
-                                cursor.style.position = "fixed"; cursor.style.zIndex = "2147483647"; cursor.style.pointerEvents = "none";
-                                cursor.style.transition = "transform 0.5s cubic-bezier(0.22, 1, 0.36, 1)";
-                                cursor.style.transform = `translate(${window.innerWidth}px, ${window.innerHeight}px)`;
-                                document.body.appendChild(cursor);
-                                cursor.getBoundingClientRect();
-                            }
-                            
-                            let aborted = false;
-                            const abortHandler = (e) => {
-                                if (e.isTrusted && (Math.abs(e.movementX) > 1 || Math.abs(e.movementY) > 1)) {
-                                    aborted = true; cursor.style.display = "none";
-                                    document.removeEventListener("mousemove", abortHandler);
+                                if (activeCell) {
+                                    const rect = activeCell.getBoundingClientRect();
+                                    targetX = rect.left + rect.width / 2;
+                                    targetY = rect.top + rect.height / 2;
                                 }
-                            };
-                            document.addEventListener("mousemove", abortHandler);
-                            cursor.style.display = "block";
-                            cursor.style.transform = `translate(${targetX}px, ${targetY}px)`;
-                            
-                            await new Promise(r => setTimeout(r, 600));
-                            document.removeEventListener("mousemove", abortHandler);
-                            if (aborted) { resolve({ aborted: true }); return; }
-                            // --- END GHOST MOUSE ---
 
-                            // 2. Click the specific coordinate to guarantee canvas focus
-                            let canvas = document.elementFromPoint(targetX, targetY);
-                            let activeTarget = canvas || document.activeElement || document.body;
-                            
-                            if (canvas) {
-                                canvas.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, clientX: targetX, clientY: targetY }));
-                                canvas.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, clientX: targetX, clientY: targetY }));
-                                await new Promise(r => setTimeout(r, 100)); // give canvas time to wake up
+                                // --- GHOST MOUSE INJECTION ---
+                                let cursor = document.getElementById("nano-ghost-mouse");
+                                if (!cursor) {
+                                    cursor = document.createElement("div");
+                                    cursor.id = "nano-ghost-mouse";
+                                    const svgNS = "http://www.w3.org/2000/svg";
+                                    const svg = document.createElementNS(svgNS, "svg");
+                                    svg.setAttribute("width", "24"); svg.setAttribute("height", "24");
+                                    svg.setAttribute("viewBox", "0 0 24 24"); svg.setAttribute("fill", "none");
+                                    const path = document.createElementNS(svgNS, "path");
+                                    path.setAttribute("d", "M5.5 3.21V20.8c0 .45.54.67.85.35l4.86-4.86a.5.5 0 01.35-.15h6.87c.45 0 .67-.54.35-.85L6.35 2.86a.5.5 0 00-.85.35z");
+                                    path.setAttribute("fill", "#111"); path.setAttribute("stroke", "#FFF"); path.setAttribute("stroke-width", "1.5");
+                                    svg.appendChild(path); cursor.appendChild(svg);
+                                    cursor.style.position = "fixed"; cursor.style.zIndex = "2147483647"; cursor.style.pointerEvents = "none";
+                                    cursor.style.transition = "transform 0.5s cubic-bezier(0.22, 1, 0.36, 1)";
+                                    cursor.style.transform = `translate(${window.innerWidth}px, ${window.innerHeight}px)`;
+                                    document.body.appendChild(cursor);
+                                    cursor.getBoundingClientRect();
+                                }
+
+                                let aborted = false;
+                                const abortHandler = (e) => {
+                                    if (e.isTrusted && (Math.abs(e.movementX) > 1 || Math.abs(e.movementY) > 1)) {
+                                        aborted = true; cursor.style.display = "none";
+                                        document.removeEventListener("mousemove", abortHandler);
+                                    }
+                                };
+                                document.addEventListener("mousemove", abortHandler);
+                                cursor.style.display = "block";
+                                cursor.style.transform = `translate(${targetX}px, ${targetY}px)`;
+
+                                await new Promise(r => setTimeout(r, 600));
+                                document.removeEventListener("mousemove", abortHandler);
+                                if (aborted) { resolve({ aborted: true }); return; }
+                                // --- END GHOST MOUSE ---
+
+                                // 2. Click the specific coordinate to guarantee canvas focus
+                                let canvas = document.elementFromPoint(targetX, targetY);
+                                let activeTarget = canvas || document.activeElement || document.body;
+
+                                if (canvas) {
+                                    canvas.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, clientX: targetX, clientY: targetY }));
+                                    canvas.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, clientX: targetX, clientY: targetY }));
+                                    await new Promise(r => setTimeout(r, 100)); // give canvas time to wake up
+                                }
+
+                                // 3. Dispatch Enter key to open the cell editor manually on Spreadsheets
+                                activeTarget.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', keyCode: 13, bubbles: true, composed: true }));
+                                await new Promise(r => setTimeout(r, 100));
+
+                                // 4. Construct the mock Clipboard payload
+                                const dataTransfer = new DataTransfer();
+                                dataTransfer.setData('text/plain', val);
+                                const pasteEvent = new ClipboardEvent('paste', {
+                                    clipboardData: dataTransfer,
+                                    bubbles: true,
+                                    cancelable: true,
+                                    composed: true
+                                });
+
+                                // 5. Fire the paste payload
+                                (document.activeElement || activeTarget).dispatchEvent(pasteEvent);
+
+                                // If it's a regular contenteditable or input, also try execCommand as fallback
+                                try { document.execCommand('insertText', false, val); } catch (e) { }
+
+                                await new Promise(r => setTimeout(r, 200));
+
+                                // 6. Dispatch Enter key to commit the cell
+                                (document.activeElement || activeTarget).dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', keyCode: 13, bubbles: true, composed: true }));
+                                document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', keyCode: 13, bubbles: true, composed: true }));
+
+                                resolve({ success: true });
+                            } catch (err) {
+                                console.error('[NanoAgent] inject_data crashed:', err);
+                                resolve({ error: err.message || 'Unknown injection error' });
                             }
-
-                            // 3. Dispatch Enter key to open the cell editor manually on Spreadsheets
-                            activeTarget.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', keyCode: 13, bubbles: true, composed: true }));
-                            await new Promise(r => setTimeout(r, 100));
-
-                            // 4. Construct the mock Clipboard payload
-                            const dataTransfer = new DataTransfer();
-                            dataTransfer.setData('text/plain', val);
-                            const pasteEvent = new ClipboardEvent('paste', {
-                                clipboardData: dataTransfer,
-                                bubbles: true,
-                                cancelable: true,
-                                composed: true
-                            });
-
-                            // 5. Fire the paste payload
-                            (document.activeElement || activeTarget).dispatchEvent(pasteEvent);
-                            
-                            // If it's a regular contenteditable or input, also try execCommand as fallback
-                            try { document.execCommand('insertText', false, val); } catch(e) {}
-
-                            await new Promise(r => setTimeout(r, 200));
-
-                            // 6. Dispatch Enter key to commit the cell
-                            (document.activeElement || activeTarget).dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', keyCode: 13, bubbles: true, composed: true }));
-                            document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', keyCode: 13, bubbles: true, composed: true }));
-
-                            resolve({ success: true });
                         });
                     },
                     args: [safePlanValue || ""]
@@ -636,13 +648,78 @@ runBtn.onclick = async () => {
                     continue;
                 }
 
+                if (execResults && execResults[0] && execResults[0].result && execResults[0].result.error) {
+                    write(`[!] Injection error: ${execResults[0].result.error}. Retrying...`, "error");
+                    actionHistory.push(`[SYSTEM FATAL BLOCK] Spreadsheet injection FAILED: ${execResults[0].result.error}. You MUST try 'inject_data' again. The task is NOT complete!`);
+                    await new Promise(r => setTimeout(r, 2000));
+                    continue;
+                }
+
                 await new Promise(r => setTimeout(r, 3000));
-                
+
                 // Instruct small models to stop looping after spreadsheet injection
                 actionHistory.push(`[SYSTEM SUCCESS] You successfully performed [SPREADSHEET INJECTION]! Google Sheets hides text from the DOM scanner, so you will NOT see your pasted text. TRUST THAT IT WORKED. DO NOT REPEAT THE INJECTION. If your task is complete, output action: "finish" NOW.`);
             }
 
             else if (typeof plan.target_index === "number") {
+                // 🛡️ V1.2 SHEETS GUARD: Auto-reroute type/click to inject_data on spreadsheet pages
+                if ((plan.action === "type" || plan.action === "click") && tab.url && (tab.url.includes("spreadsheets") || tab.url.includes("sheets.new"))) {
+                    if (plan.action === "type" && safePlanValue) {
+                        write(`[!] Rerouting [TYPE] → [SPREADSHEET INJECTION] (Sheets detected)`, "debug");
+                        plan.action = "inject_data";
+                        // Re-enter the inject_data block on next iteration with correct action
+                        const execResults = await chrome.scripting.executeScript({
+                            target: { tabId: tab.id },
+                            world: "MAIN",
+                            func: async (val) => {
+                                return new Promise(async (resolve) => {
+                                    try {
+                                        let targetX = window.innerWidth / 2;
+                                        let targetY = window.innerHeight / 2;
+                                        const activeCell = document.querySelector(".autofill-cover") ||
+                                            document.querySelector(".cell-selection") ||
+                                            document.querySelector(".active-cell-border");
+                                        if (activeCell) {
+                                            const rect = activeCell.getBoundingClientRect();
+                                            targetX = rect.left + rect.width / 2;
+                                            targetY = rect.top + rect.height / 2;
+                                        }
+                                        let canvas = document.elementFromPoint(targetX, targetY);
+                                        let activeTarget = canvas || document.activeElement || document.body;
+                                        if (canvas) {
+                                            canvas.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, clientX: targetX, clientY: targetY }));
+                                            canvas.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, clientX: targetX, clientY: targetY }));
+                                            await new Promise(r => setTimeout(r, 100));
+                                        }
+                                        activeTarget.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', keyCode: 13, bubbles: true, composed: true }));
+                                        await new Promise(r => setTimeout(r, 100));
+                                        const dataTransfer = new DataTransfer();
+                                        dataTransfer.setData('text/plain', val);
+                                        const pasteEvent = new ClipboardEvent('paste', {
+                                            clipboardData: dataTransfer, bubbles: true, cancelable: true, composed: true
+                                        });
+                                        (document.activeElement || activeTarget).dispatchEvent(pasteEvent);
+                                        try { document.execCommand('insertText', false, val); } catch (e) { }
+                                        await new Promise(r => setTimeout(r, 200));
+                                        (document.activeElement || activeTarget).dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', keyCode: 13, bubbles: true, composed: true }));
+                                        resolve({ success: true });
+                                    } catch (err) {
+                                        console.error('[NanoAgent] rerouted inject_data crashed:', err);
+                                        resolve({ error: err.message || 'Unknown rerouted injection error' });
+                                    }
+                                });
+                            },
+                            args: [safePlanValue]
+                        });
+                        await new Promise(r => setTimeout(r, 3000));
+                        actionHistory.push(`[SYSTEM SUCCESS] Rerouted TYPE → SPREADSHEET INJECTION and pasted "${safePlanValue}". If your task is complete, output action: "finish" NOW.`);
+                        write("[WAIT] API Cooldown (3s)...", "debug");
+                        await new Promise(r => setTimeout(r, 3000));
+                        if (deferredBreak) { await wrapUpTask(); break; }
+                        continue;
+                    }
+                }
+
                 const target = elements.find(e => e.index === plan.target_index);
                 if (target) {
                     if (target.tag === "INFO" || target.tag === "ERROR") {
@@ -658,109 +735,121 @@ runBtn.onclick = async () => {
                         world: "MAIN",
                         func: async (sel, action, value, elementHref) => {
                             return new Promise(async (resolve) => {
-                                const el = document.querySelector(sel);
-                                if (!el) {
-                                    console.error("[NanoAgent] Element not found for selector:", sel);
-                                    resolve({ error: "Element not found" }); return;
-                                }
-                                let tEl = el.closest('button, a, [role="button"], input, [contenteditable="true"]') || el;
-                                tEl.scrollIntoView({ block: 'center', behavior: 'smooth' });
-                                
-                                await new Promise(r => setTimeout(r, 400));
-                                const rect = tEl.getBoundingClientRect();
-                                const centerX = rect.left + rect.width / 2;
-                                const centerY = rect.top + rect.height / 2;
-                                
-                                let cursor = document.getElementById("nano-ghost-mouse");
-                                if (!cursor) {
-                                    cursor = document.createElement("div");
-                                    cursor.id = "nano-ghost-mouse";
-                                    cursor.innerHTML = `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M5.5 3.21V20.8c0 .45.54.67.85.35l4.86-4.86a.5.5 0 01.35-.15h6.87c.45 0 .67-.54.35-.85L6.35 2.86a.5.5 0 00-.85.35z" fill="#111" stroke="#FFF" stroke-width="1.5"/></svg>`;
-                                    cursor.style.position = "fixed"; cursor.style.zIndex = "2147483647"; cursor.style.pointerEvents = "none";
-                                    cursor.style.transition = "transform 0.5s cubic-bezier(0.22, 1, 0.36, 1)";
-                                    cursor.style.transform = `translate(${window.innerWidth}px, ${window.innerHeight}px)`;
-                                    document.body.appendChild(cursor);
-                                    cursor.getBoundingClientRect();
-                                }
-                                
-                                let aborted = false;
-                                const abortHandler = (e) => {
-                                    if (e.isTrusted && (Math.abs(e.movementX) > 1 || Math.abs(e.movementY) > 1)) {
-                                        aborted = true; cursor.style.display = "none";
-                                        document.removeEventListener("mousemove", abortHandler);
+                                try {
+                                    const el = document.querySelector(sel);
+                                    if (!el) {
+                                        console.error("[NanoAgent] Element not found for selector:", sel);
+                                        resolve({ error: "Element not found" }); return;
                                     }
-                                };
-                                document.addEventListener("mousemove", abortHandler);
-                                cursor.style.display = "block";
-                                cursor.style.transform = `translate(${centerX}px, ${centerY}px)`;
-                                
-                                await new Promise(r => setTimeout(r, 600));
-                                document.removeEventListener("mousemove", abortHandler);
-                                
-                                if (aborted) { resolve({ aborted: true }); return; }
+                                    let tEl = el.closest('button, a, [role="button"], input, [contenteditable="true"]') || el;
+                                    tEl.scrollIntoView({ block: 'center', behavior: 'smooth' });
 
-                                tEl.focus();
+                                    await new Promise(r => setTimeout(r, 400));
+                                    const rect = tEl.getBoundingClientRect();
+                                    const centerX = rect.left + rect.width / 2;
+                                    const centerY = rect.top + rect.height / 2;
 
-                                if (action === "type") {
-                                    const delay = (ms) => new Promise(r => setTimeout(r, ms));
-                                    let nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value")?.set;
-                                    let nativeTextAreaValueSetter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, "value")?.set;
+                                    let cursor = document.getElementById("nano-ghost-mouse");
+                                    if (!cursor) {
+                                        cursor = document.createElement("div");
+                                        cursor.id = "nano-ghost-mouse";
+                                        const svgNS = "http://www.w3.org/2000/svg";
+                                        const svg = document.createElementNS(svgNS, "svg");
+                                        svg.setAttribute("width", "24"); svg.setAttribute("height", "24");
+                                        svg.setAttribute("viewBox", "0 0 24 24"); svg.setAttribute("fill", "none");
+                                        const path = document.createElementNS(svgNS, "path");
+                                        path.setAttribute("d", "M5.5 3.21V20.8c0 .45.54.67.85.35l4.86-4.86a.5.5 0 01.35-.15h6.87c.45 0 .67-.54.35-.85L6.35 2.86a.5.5 0 00-.85.35z");
+                                        path.setAttribute("fill", "#111"); path.setAttribute("stroke", "#FFF"); path.setAttribute("stroke-width", "1.5");
+                                        svg.appendChild(path); cursor.appendChild(svg);
+                                        cursor.style.position = "fixed"; cursor.style.zIndex = "2147483647"; cursor.style.pointerEvents = "none";
+                                        cursor.style.transition = "transform 0.5s cubic-bezier(0.22, 1, 0.36, 1)";
+                                        cursor.style.transform = `translate(${window.innerWidth}px, ${window.innerHeight}px)`;
+                                        document.body.appendChild(cursor);
+                                        cursor.getBoundingClientRect();
+                                    }
 
-                                    if (tEl.isContentEditable) {
-                                        tEl.focus();
-                                        document.execCommand('selectAll', false, null);
-                                        document.execCommand('delete', false, null);
-                                        for (let i = 0; i < value.length; i++) {
-                                            document.execCommand('insertText', false, value[i]);
-                                            await delay(30);
+                                    let aborted = false;
+                                    const abortHandler = (e) => {
+                                        if (e.isTrusted && (Math.abs(e.movementX) > 1 || Math.abs(e.movementY) > 1)) {
+                                            aborted = true; cursor.style.display = "none";
+                                            document.removeEventListener("mousemove", abortHandler);
                                         }
-                                    } else {
-                                        const setter = tEl.tagName === 'TEXTAREA' ? nativeTextAreaValueSetter : nativeInputValueSetter;
-                                        // Clear field first
-                                        if (setter) { setter.call(tEl, ''); } else { tEl.value = ''; }
-                                        tEl.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
+                                    };
+                                    document.addEventListener("mousemove", abortHandler);
+                                    cursor.style.display = "block";
+                                    cursor.style.transform = `translate(${centerX}px, ${centerY}px)`;
 
-                                        // Type character by character
-                                        for (let i = 0; i < value.length; i++) {
-                                            const partial = value.substring(0, i + 1);
-                                            if (setter) { setter.call(tEl, partial); } else { tEl.value = partial; }
+                                    await new Promise(r => setTimeout(r, 600));
+                                    document.removeEventListener("mousemove", abortHandler);
+
+                                    if (aborted) { resolve({ aborted: true }); return; }
+
+                                    tEl.focus();
+
+                                    if (action === "type") {
+                                        const delay = (ms) => new Promise(r => setTimeout(r, ms));
+                                        let nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value")?.set;
+                                        let nativeTextAreaValueSetter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, "value")?.set;
+
+                                        if (tEl.isContentEditable) {
+                                            tEl.focus();
+                                            document.execCommand('selectAll', false, null);
+                                            document.execCommand('delete', false, null);
+                                            for (let i = 0; i < value.length; i++) {
+                                                document.execCommand('insertText', false, value[i]);
+                                                await delay(30);
+                                            }
+                                        } else {
+                                            const setter = tEl.tagName === 'TEXTAREA' ? nativeTextAreaValueSetter : nativeInputValueSetter;
+                                            // Clear field first
+                                            if (setter) { setter.call(tEl, ''); } else { tEl.value = ''; }
                                             tEl.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
-                                            await delay(30);
+
+                                            // Type character by character
+                                            for (let i = 0; i < value.length; i++) {
+                                                const partial = value.substring(0, i + 1);
+                                                if (setter) { setter.call(tEl, partial); } else { tEl.value = partial; }
+                                                tEl.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
+                                                await delay(30);
+                                            }
                                         }
+
+                                        tEl.dispatchEvent(new Event('change', { bubbles: true, composed: true }));
+                                        resolve({ success: true });
+                                    } else {
+                                        const originalOpen = window.open;
+                                        window.open = function (url) { window.location.href = url; return window; };
+                                        const evtOpts = { bubbles: true, composed: true, cancelable: true, view: window };
+                                        tEl.dispatchEvent(new PointerEvent('pointerover', evtOpts));
+                                        tEl.dispatchEvent(new PointerEvent('pointerenter', evtOpts));
+                                        tEl.dispatchEvent(new PointerEvent('pointerdown', Object.assign({ buttons: 1 }, evtOpts)));
+                                        tEl.dispatchEvent(new PointerEvent('pointerup', evtOpts));
+                                        tEl.dispatchEvent(new MouseEvent('mousedown', Object.assign({ buttons: 1 }, evtOpts)));
+                                        tEl.dispatchEvent(new MouseEvent('mouseup', evtOpts));
+
+                                        // Aggressive Click: Click both the exact element and its actionable parent
+                                        el.click();
+                                        if (tEl !== el) tEl.click();
+
+                                        // SPA Fallback (e.g. YouTube): Ensure we hit the main anchor if nested
+                                        const anchor = el.closest('a#thumbnail') || el.closest('a.yt-simple-endpoint') || el.closest('a');
+                                        if (anchor && anchor !== el && anchor !== tEl) {
+                                            anchor.click();
+                                        }
+                                        setTimeout(() => { window.open = originalOpen; }, 1000);
+
+                                        // Ironclad Action Fallback: Force URL navigation if standard click injection fails SPAs
+                                        if (elementHref) {
+                                            setTimeout(() => { if (!window.location.href.includes(elementHref)) window.location.href = elementHref; }, 800);
+                                        } else if (tEl.tagName === 'A' && tEl.href) {
+                                            setTimeout(() => { if (!window.location.href.includes(tEl.href)) window.location.href = tEl.href; }, 800);
+                                        }
+                                        resolve({ success: true });
                                     }
-
-                                    tEl.dispatchEvent(new Event('change', { bubbles: true, composed: true }));
-                                    resolve({ success: true });
-                                } else {
-                                const originalOpen = window.open;
-                                window.open = function (url) { window.location.href = url; return window; };
-                                const evtOpts = { bubbles: true, composed: true, cancelable: true, view: window };
-                                tEl.dispatchEvent(new PointerEvent('pointerover', evtOpts));
-                                tEl.dispatchEvent(new PointerEvent('pointerenter', evtOpts));
-                                tEl.dispatchEvent(new PointerEvent('pointerdown', Object.assign({ buttons: 1 }, evtOpts)));
-                                tEl.dispatchEvent(new PointerEvent('pointerup', evtOpts));
-                                tEl.dispatchEvent(new MouseEvent('mousedown', Object.assign({ buttons: 1 }, evtOpts)));
-                                tEl.dispatchEvent(new MouseEvent('mouseup', evtOpts));
-
-                                // Aggressive Click: Click both the exact element and its actionable parent
-                                el.click();
-                                if (tEl !== el) tEl.click();
-
-                                // SPA Fallback (e.g. YouTube): Ensure we hit the main anchor if nested
-                                const anchor = el.closest('a#thumbnail') || el.closest('a.yt-simple-endpoint') || el.closest('a');
-                                if (anchor && anchor !== el && anchor !== tEl) {
-                                    anchor.click();
+                                } catch (err) {
+                                    console.error('[NanoAgent] click/type handler crashed:', err);
+                                    resolve({ error: err.message || 'Unknown action error' });
                                 }
-                                setTimeout(() => { window.open = originalOpen; }, 1000);
-
-                                // Ironclad Action Fallback: Force URL navigation if standard click injection fails SPAs
-                                if (elementHref) {
-                                    setTimeout(() => { if (!window.location.href.includes(elementHref)) window.location.href = elementHref; }, 800);
-                                } else if (tEl.tagName === 'A' && tEl.href) {
-                                    setTimeout(() => { if (!window.location.href.includes(tEl.href)) window.location.href = tEl.href; }, 800);
-                                }
-                                resolve({ success: true });
-                            }
                             });
                         },
                         args: [target.sel || "", plan.action || "", safePlanValue || "", target.fullHref || ""]
@@ -771,6 +860,11 @@ runBtn.onclick = async () => {
                         actionHistory.push(`[SYSTEM OVERRIDE] The human user moved the physical mouse and aborted your action! Pick a new target or change your plan.`);
                         await new Promise(r => setTimeout(r, 2000));
                         continue;
+                    }
+
+                    if (execResults && execResults[0] && execResults[0].result && execResults[0].result.error) {
+                        write(`[!] Target element not found in DOM. Retrying...`, "error");
+                        actionHistory.push(`[SYSTEM BLOCK] Could not find the element you targeted. The DOM may have changed. Re-analyze and pick a new target.`);
                     }
 
                     await new Promise(r => setTimeout(r, 3000));

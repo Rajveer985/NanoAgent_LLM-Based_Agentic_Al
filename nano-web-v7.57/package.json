@@ -1,6 +1,6 @@
 {
   "name": "nanobridge",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "description": "WhatsApp Remote Bridge for NanoAgent",
   "main": "main.js",
   "scripts": {
