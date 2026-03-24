@@ -44,7 +44,9 @@ NanoAgent is a **fully autonomous web agent** that lives inside your Chrome brow
 
 ## 🎬 See It In Action
 
-https://github.com/Rajveer-sahay985/NanoAgent_LLM-Based_Agentic_Al/raw/main/assets/NanoAgent-demo.mp4
+<p align="center">
+  <video src="https://github.com/Rajveer-sahay985/NanoAgent_LLM-Based_Agentic_Al/raw/main/assets/NanoAgent-demo.mp4" width="100%" controls autoplay muted></video>
+</p>
 
 ---
 
