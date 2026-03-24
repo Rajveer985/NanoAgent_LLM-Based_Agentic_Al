@@ -95,14 +95,17 @@ function DOMScanner(showOverlays) {
         const isInput = ["INPUT", "TEXTAREA", "SELECT", "BUTTON"].includes(tag) || el.isContentEditable;
         const isLink = tag === "A" && el.href;
         const isInteractive = el.getAttribute("role") === "button" || window.getComputedStyle(el).cursor === "pointer";
-        const text = (el.innerText || "").trim();
+        const text = (el.innerText || "").trim().toLowerCase();
         const isPrice = /[\$₹£€]/.test(text) && text.length > 0 && text.length < 40;
         const isLeafText = el.childElementCount === 0 && text.length > 0 && text.length < 80;
 
+        const ariaLabel = (el.getAttribute("aria-label") || "").toLowerCase();
+        const cls = (el.className || "").toString().toLowerCase();
+        const id = (el.id || "").toLowerCase();
+        const isModalAction = ariaLabel.includes("close") || ariaLabel.includes("dismiss") || text === "x" || text === "close" || text === "dismiss" || text === "no thanks" || text === "accept" || text === "agree" || cls.includes("close") || cls.includes("dismiss") || id.includes("close") || id.includes("dismiss");
+
         // Always include spreadsheet formula bars
-        if (el.id && el.id.toLowerCase().includes("formula-bar")) return true;
-        if (el.id && el.id.toLowerCase().includes("formulabar")) return true;
-        if ((el.getAttribute('aria-label') || "").toLowerCase().includes("formula bar")) return true;
+        if (id.includes("formula-bar") || id.includes("formulabar") || ariaLabel.includes("formula bar")) return true;
 
         // 🛡️ Reject oversized containers (full-page divs)
         const rect = el.getBoundingClientRect();
@@ -110,13 +113,16 @@ function DOMScanner(showOverlays) {
             if (!el.isContentEditable) return false;
         }
 
-        // 🛡️ Skip empty decorative elements
-        if (!isInput && !isLink && text.length === 0) return false;
+        // 🛡️ Skip empty decorative elements, UNLESS they are [POPUP/MODAL ACTIONS]
+        if (!isInput && !isLink && text.length === 0 && !isModalAction) return false;
 
-        // 🛡️ Skip sidebar/footer/nav noise (but NEVER skip inputs or main content)
-        if (!isInput && isNoiseContainer(el)) return false;
+        // 🛡️ Skip obvious generic search tabs and menu items that confuse local LLMs
+        if (/^(news|images|shopping|videos|forums|more|tools|ai mode|sign in|login|register)$/.test(text)) return false;
 
-        return isInput || isLink || isInteractive || isPrice || isLeafText;
+        // 🛡️ Skip sidebar/footer/nav noise (but NEVER skip inputs, main content, or [POPUP/MODAL ACTIONS])
+        if (!isInput && !isModalAction && isNoiseContainer(el)) return false;
+
+        return isInput || isLink || isInteractive || isPrice || isLeafText || isModalAction;
     });
 
     // 🔥 DEDUPLICATION — collapse elements at same grid position
@@ -134,14 +140,29 @@ function DOMScanner(showOverlays) {
     // 🔥 PRIORITY SCORING — rank by actionability, then cap at 50
     const scored = uniqueElements.map(el => {
         let priority = 0;
+        const ariaLabel = (el.getAttribute("aria-label") || "").toLowerCase();
+        const elText = (el.innerText || "").trim().toLowerCase();
+        const cls = (el.className || "").toString().toLowerCase();
+        const id = (el.id || "").toLowerCase();
         const tag = el.tagName;
-        if (["INPUT", "TEXTAREA", "SELECT"].includes(tag) || el.isContentEditable) priority = 100;
+
+        let isModalAction = false;
+        if (ariaLabel.includes("close") || ariaLabel.includes("dismiss") || elText === "x" || elText === "close" || elText === "dismiss" || elText === "no thanks" || elText === "accept" || elText === "allow" || elText === "agree") {
+            isModalAction = true;
+        }
+        if (cls.includes("close") || cls.includes("dismiss") || id.includes("close") || id.includes("dismiss")) {
+            isModalAction = true;
+        }
+
+        if (isModalAction) priority = 1000;
+        else if (["INPUT", "TEXTAREA", "SELECT"].includes(tag) || el.isContentEditable) priority = 100;
         else if (tag === "BUTTON" || el.getAttribute("role") === "button" || tag === "VIDEO") priority = 90;
         else if (tag === "A" && el.href) priority = 80;
         else if (window.getComputedStyle(el).cursor === "pointer") priority = 75;
         else if (/[\$₹£€]/.test((el.innerText || "").trim())) priority = 70;
         else priority = 50;
-        return { el, priority };
+
+        return { el, priority, isModalAction };
     });
 
     scored.sort((a, b) => b.priority - a.priority);
@@ -150,7 +171,9 @@ function DOMScanner(showOverlays) {
     return finalElements.map((item, index) => {
         const el = item.el;
         let text = "";
-        if (el.tagName === "A" && el.getAttribute("aria-label")) {
+        if (item.isModalAction) {
+            text = `[POPUP/MODAL ACTION] ${el.innerText || el.getAttribute("aria-label") || 'Close/Accept'}`;
+        } else if (el.tagName === "A" && el.getAttribute("aria-label")) {
             text = el.getAttribute("aria-label");
         } else if (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable) {
             text = el.value || el.placeholder || el.innerText || "Rich Text Field";
@@ -158,7 +181,7 @@ function DOMScanner(showOverlays) {
             text = (el.innerText || "").trim();
         }
 
-        text = text.substring(0, 40).replace(/\n/g, " ");
+        text = text.substring(0, 70).replace(/\n/g, " ");
         let fullHref = el.href || "";
         let displayHref = fullHref.length > 60 ? fullHref.substring(0, 60) + "..." : fullHref;
 
@@ -167,7 +190,7 @@ function DOMScanner(showOverlays) {
             const div = document.createElement("div"); div.className = "nano-overlay";
             div.style.position = "fixed"; div.style.left = rect.left + "px"; div.style.top = rect.top + "px";
             div.style.width = rect.width + "px"; div.style.height = rect.height + "px";
-            div.style.border = "2px solid #06b6d4"; div.style.borderRadius = "4px"; div.style.zIndex = "999999"; div.style.pointerEvents = "none";
+            div.style.border = "2px solid #06b6d4"; div.style.borderRadius = "4px"; div.style.zIndex = "2147483647"; div.style.pointerEvents = "none";
             const badge = document.createElement("div"); badge.innerText = index;
             badge.style.position = "absolute"; badge.style.top = "-18px"; badge.style.left = "-2px";
             badge.style.background = "#06b6d4"; badge.style.color = "#0f172a"; badge.style.fontWeight = "bold"; badge.style.fontSize = "11px"; badge.style.padding = "2px 6px"; badge.style.borderRadius = "4px";
@@ -196,19 +219,27 @@ STEP 0 — CLASSIFY THE TASK (do this silently before choosing an action):
 - EXTRACTION TASK: The user wants you to FIND and REPORT info. Goal is met ONLY AFTER you use extract_info on EVERY required target. If you found what you need on the CURRENT page, you MUST 'navigate' or 'switch_tab' to find the rest! Do NOT extract the same thing twice.
 - ACTION TASK: The user wants you to DO something (e.g., click, type, pause, open multiple things). Goal is met ONLY when EVERY requested action is physically completed. If the prompt has multiple steps (e.g. "open tabs AND do X"), it is a complex ACTION TASK.
 - TRANSFER TASK: The user asked to extract data AND paste/store it somewhere else (like Google Sheets). Goal is met ONLY AFTER you physically navigate to the destination and PASTE/INJECT the data! Simply extracting it to memory is FAILURE.
+- PLANNING TASK: The user wants you to 'plan', 'budget', 'research', or 'compare' something. You MUST extract all relevant information AND explicitely store it somewhere safe (use 'https://sheets.new' via navigate or new_tab, then inject_data). Do NOT just say you found it.
 
 CRITICAL DIRECTIVES:
 1. STRICT MULTI-STEP RULE: If the request has multiple phases (e.g., "Find X and paste it into Y"), DO NOT declare "is_goal_met: true" until you have physically performed the paste/injection at the final destination!
 2. ADAPTIVE INTELLIGENCE: If a search yields "no matches found" or an error, pivot your strategy (e.g., try different search terms, or navigate directly via URL).
-3. SPREADSHEET INJECTION: You can ONLY use 'inject_data' if the CURRENT URL is actively a Google Sheets/Excel page. If you need to save data to a sheet but are on a different site, you MUST first 'navigate' or 'new_tab' to 'https://sheets.new', wait for it to load, and ONLY THEN use 'inject_data'.
-4. THE TAB RULE: Never say goal met just because a tab opened, UNLESS opening the tab was the *only* instruction given.
-5. EFFICIENT URLS: You may use direct handles if you know them (e.g., youtube.com/@markiplier/videos). If unknown, navigate to the site and search.
-6. ONE ACTION PER TURN: Never extract and navigate in the same step.
-7. TAB MANAGEMENT: 'new_tab' opens tabs silently in the BACKGROUND. IMPORTANT: You MUST read the 'AVAILABLE TABS' array to find the exact Tab Number of the page you want, then use 'switch_tab' to make it [ACTIVE]. Do NOT guess tab numbers!
+3. MODAL DEFENSE: If you see an element tagged [POPUP/MODAL ACTION], you are blocked by a popup window (Cookie Banner, Newsletter, Login). You MUST use 'click' on it immediately to dismiss it before trying to extract information!
+4. SPREADSHEET INJECTION: You can ONLY use 'inject_data' if the CURRENT URL is actively a Google Sheets/Excel page. If you need to save data to a sheet but are on a different site, you MUST first 'navigate' or 'new_tab' to 'https://sheets.new', wait for it to load, and ONLY THEN use 'inject_data'.
+5. THE TAB RULE: Never say goal met just because a tab opened, UNLESS opening the tab was the *only* instruction given.
+6. EFFICIENT URLS: You may use direct handles if you know them (e.g., youtube.com/@markiplier/videos). If unknown, navigate to the site and search.
+7. ONE ACTION PER TURN: Never extract and navigate in the same step.
+8. TAB MANAGEMENT: 'new_tab' opens tabs silently in the BACKGROUND. IMPORTANT: You MUST read the 'AVAILABLE TABS' array to find the exact Tab Number of the page you want, then use 'switch_tab' to make it [ACTIVE]. Do NOT guess tab numbers!
 8. NO BLIND EXTRACTIONS: You can ONLY extract information from the currently [ACTIVE] tab. If the active tab is an internal page or lacks the data, you MUST switch tabs first. Do NOT hallucinate data!
 9. MEDIA PLAYBACK: To pause or play a video or audio file, explicitly click the media player itself or its play/pause button. Do not search for a text input to pause.
 10. AVOID REPEATS: Once an item appears in SAVED MEMORY, you MUST NOT extract it again. Your next step must be to find the next item.
 11. SHORT REASONING: Keep under 15 words. Start with "[NAVIGATION]", "[EXTRACTION]", or "[ACTION]".
+12. MEMORY DUMP TRICK: To instantly paste EVERYTHING you have saved in memory into Google Sheets, just output exactly "value": "MEMORY". Do NOT try to manually re-type all the facts into the JSON yourself!
+13. SHORT EXTRACTIONS: NEVER extract an entire page of text at once. Extract specific, small chunks (e.g. one hotel or one price). Your 'value' string MUST NEVER exceed 200 characters!
+14. SEARCH BAR & AUTOCOMPLETE: Typing into a search bar often does NOT submit the search! After you use 'type', your next action MUST BE 'click' on the autocomplete dropdown result or the "Search" button. NEVER use 'type' into the exact same search bar twice in a row!
+15. NAVIGATION VS EXTRACTION: Short strings like "Places", "Hotels", "Flights", or "Overview" are CLICKABLE TABS. You must use 'click' to navigate to them! NEVER use 'extract_info' on navigation tabs. You should only 'extract_info' on actual detailed paragraphs or precise prices (e.g., "$150/night", "Shaniwar Wada Palace is a historical fort...").
+16. GOOGLE SEARCH RESULTS: If you are searching Google for complex data (like hotel prices) and the EXACT answers aren't perfectly visible in the snippet text, YOU MUST 'click' a blue search result link to enter the actual website! DO NOT desperately 'extract_info' useless snippets or ads (e.g. "Rooms & Suites", "hyatt.com") hoping they contain data!
+17. MISSION ACCOMPLISHED: Once you have completely satisfied the user's objective (e.g., extracting 5 places, 5 hotels, and 5 flights) and saved everything they asked for, your final action MUST BE 'finish'. Do not wander around endlessly!
 
 RESPONSE FORMAT MUST BE EXACT JSON:
 {
@@ -216,10 +247,13 @@ RESPONSE FORMAT MUST BE EXACT JSON:
   "is_goal_met": true/false,
   "action": "click" | "type" | "scroll" | "finish" | "new_tab" | "navigate" | "extract_info" | "switch_tab" | "inject_data",
   "target_index": number (DOM index or Tab Number),
-  "value": "RAW TEXT ONLY. To open a specific element's link in a new tab, use 'new_tab' action with its target_index."
-}`;
+  "value": "RAW TEXT ONLY (Max 200 chars). NO NEWLINES. ESCAPE ALL QUOTES."
+}
+
+CRITICAL OPSEC: DO NOT add any extra keys! DO NOT write arrays! Output ONLY this exact 5-property JSON object!`;
 
     let retries = 3;
+    let parseErrorHint = "";
     while (retries > 0) {
         try {
             if (provider === "openai") {
@@ -229,7 +263,7 @@ RESPONSE FORMAT MUST BE EXACT JSON:
                     headers: { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}` },
                     body: JSON.stringify({
                         model: modelName,
-                        messages: [{ role: "user", content: prompt }],
+                        messages: [{ role: "user", content: prompt + parseErrorHint }],
                         temperature: temperature,
                         response_format: { type: "json_object" }
                     })
@@ -246,9 +280,9 @@ RESPONSE FORMAT MUST BE EXACT JSON:
                 const data = await response.json();
                 if (data.error) throw new Error(data.error.message);
 
-                let contentText = data.choices[0].message.content;
+                let contentText = data.choices[0].message.content.trim();
                 if (contentText.startsWith("\`\`\`")) {
-                    contentText = contentText.replace(/^\`\`\`(json)?\n/, "").replace(/\n\`\`\`$/, "");
+                    contentText = contentText.replace(/^\`\`\`([a-zA-Z]+)?\n/, "").replace(/\n\`\`\`$/, "");
                 }
                 return JSON.parse(contentText);
             } else {
@@ -258,7 +292,7 @@ RESPONSE FORMAT MUST BE EXACT JSON:
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({
-                        contents: [{ parts: [{ text: prompt }] }],
+                        contents: [{ parts: [{ text: prompt + parseErrorHint }] }],
                         generationConfig: { responseMimeType: "application/json", temperature: temperature }
                     })
                 });
@@ -281,14 +315,27 @@ RESPONSE FORMAT MUST BE EXACT JSON:
 
                 const data = await response.json();
                 if (data.error) throw new Error(data.error.message);
-                return JSON.parse(data.candidates[0].content.parts[0].text);
+
+                let contentText = data.candidates[0].content.parts[0].text.trim();
+                if (contentText.startsWith("\`\`\`")) {
+                    contentText = contentText.replace(/^\`\`\`([a-zA-Z]+)?\n/, "").replace(/\n\`\`\`$/, "");
+                }
+                return JSON.parse(contentText);
             }
         } catch (error) {
             retries--;
             if (retries === 0) throw error;
-            // Only retry on network drop or 500s. Do not retry 404/401s to save time.
-            if (error.message.includes("404") || error.message.includes("401")) throw error;
-            console.log("API Error caught. Retrying...", error);
+
+            // 🛡️ V7.57: Self-Correcting LLM JSON Errors
+            if (error instanceof SyntaxError) {
+                console.warn("[NanoAgent] Target Model hallucinated invalid JSON. Retrying with explicit formatting hint...", error.message);
+                parseErrorHint = `\n\n[SYSTEM FATAL ERROR ON PREVIOUS ATTEMPT]: Your last response caused a JSON SyntaxError: ${error.message}. You MUST properly escape all double quotes (\\") and newlines (\\n) inside the "value" string field. Do NOT output raw newlines or unescaped quotes inside strings. You MUST output ONLY 100% valid JSON.`;
+            } else if (error.message.includes("404") || error.message.includes("401")) {
+                throw error; // Don't retry auth/not-found errors
+            } else {
+                console.log("[NanoAgent] API/Network Error caught. Retrying...", error);
+            }
+
             await new Promise(resolve => setTimeout(resolve, 3000));
         }
     }
@@ -299,6 +346,9 @@ runBtn.onclick = async () => {
     let lastActionKey = "";
     let loopCounter = 0;
     let loopTrapCount = 0;
+    let bannedElements = new Set(); // 🚀 V7.57: Banned Elements List for Stubborn Models
+    let currentContextUrl = ""; // 🚀 V7.57: Track URL across tabs to preserve bans
+    let consecutiveDuplicates = 0; // 🚀 V7.57: Track consecutive duplicate extractions for auto-scroll
     runBtn.style.display = "none"; stopBtn.style.display = "block"; log.innerHTML = "";
 
     write("Verifying Authorization...", "debug");
@@ -312,6 +362,15 @@ runBtn.onclick = async () => {
 
     const goal = document.getElementById("prompt").value;
     const showBoxes = document.getElementById("show-boxes").checked;
+
+    // 🧠 V7.57: SMART TASK CLASSIFIER 🧠
+    const planningKeywords = /\b(plan|vacation|travel|trip|holiday|budget|itinerary|guide|compare|research|schedule|costs?|prices?|top \d+)\b/i;
+    const isPlanningTask = planningKeywords.test(goal);
+    if (isPlanningTask) {
+        write(`[TASK MODE] Planning/Research detected — will auto-save to Google Sheets on completion.`, "debug");
+    } else {
+        write(`[TASK MODE] Quick extraction detected — results will be sent via WhatsApp API.`, "debug");
+    }
 
     const { apiKey, plannerModel, navigatorModel, model, temperature, apiProvider, baseUrl } = await chrome.storage.sync.get(['apiKey', 'plannerModel', 'navigatorModel', 'model', 'temperature', 'apiProvider', 'baseUrl']);
 
@@ -343,6 +402,12 @@ runBtn.onclick = async () => {
             let [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
             let elements = [];
 
+            // 🚀 V7.57: Persist Banned Elements ONLY for the exact active URL
+            if (tab.url && tab.url !== currentContextUrl && !tab.url.startsWith("chrome://")) {
+                bannedElements.clear();
+                currentContextUrl = tab.url;
+            }
+
             // 🛡️ V7.57: Detect restricted browser pages where scripting is blocked
             const isRestrictedPage = /^(chrome|edge|vivaldi|brave|opera|about|chrome-extension):\/\//.test(tab.url || "");
 
@@ -368,6 +433,26 @@ runBtn.onclick = async () => {
                         elements = [{ index: 0, tag: "INFO", text: "[DOM SCAN FAILED - Use 'navigate' or 'new_tab' to go to a website URL.]", href: "" }];
                     }
                 }
+
+                // 💥 V7.57: 404 PAGE DEATH DETECTOR 💥
+                if (elements && elements.length > 0) {
+                    const pageText = elements.map(e => (e.text || "").toLowerCase()).join(" ");
+                    if ((pageText.includes("404") || pageText.includes("page format is invalid")) && (pageText.includes("not found") || pageText.includes("couldn't find") || pageText.includes("does not exist") || pageText.includes("sorry"))) {
+                        if (actionHistory.length > 0 && !actionHistory[actionHistory.length - 1].includes("404 ERROR")) {
+                            write(`[!] 404 Dead Page Detected. Forcing LLM to retreat...`, "error");
+                            actionHistory.push(`[SYSTEM FATAL BLOCK]: YOU ARE ON A 404 ERROR PAGE. THE LINK IS DEAD AND HAS NO RELEVANT CONTENT. YOU MUST USE 'navigate' OR 'new_tab' TO GO BACK TO A SEARCH ENGINE IMMEDIATELY! DO NOT EXTRACT OR SCROLL.`);
+                        }
+                    }
+                }
+
+                // 💥 V7.57: BANNED ELEMENTS FILTER 💥
+                if (bannedElements.size > 0 && elements) {
+                    const originalLength = elements.length;
+                    elements = elements.filter(e => !bannedElements.has(e.index));
+                    if (elements.length < originalLength) {
+                        write(`[!] Filtered ${originalLength - elements.length} banned elements from LLM vision.`, "debug");
+                    }
+                }
             }
 
             // 🔥 V7.57: Dual-Brain Routing — Planner for Step 1, Navigator for execution
@@ -383,19 +468,76 @@ runBtn.onclick = async () => {
                 if (agentMemory.length > 0) {
                     agentMemory.forEach(m => write(m, "result-card"));
 
-                    try {
-                        const waRes = await fetch("http://localhost:3000/api/whatsapp-send", {
-                            method: "POST",
-                            headers: { "Content-Type": "application/json; charset=utf-8" },
-                            body: JSON.stringify({
-                                message: `*NanoAgent Extraction*\n\n${agentMemory.map(m => m.replace('[SAVE] ', '- ')).join('\n')}\n\n_Task: ${goal}_`
-                            })
-                        });
-                        const waData = await waRes.json();
-                        if (waData.sent) write("[WHATSAPP] Extraction sent!", "debug");
-                        else if (waData.error) write(`[WHATSAPP] Error: ${waData.error}`, "debug");
-                    } catch (e) {
-                        write("[WHATSAPP] Delivery skipped.", "debug");
+                    if (isPlanningTask) {
+                        // 🧠 V7.57: AUTO-SHEETS FOR PLANNING TASKS 🧠
+                        write(`[SHEETS] Planning task detected! Auto-saving ${agentMemory.length} items to Google Sheets...`, "debug");
+                        try {
+                            // Open a new Google Sheet
+                            const sheetsTab = await chrome.tabs.create({ url: "https://sheets.new", active: true });
+                            write(`[SHEETS] Opened new spreadsheet. Waiting for load...`, "debug");
+                            await new Promise(r => setTimeout(r, 6000)); // Wait for Sheets to fully load
+
+                            // Build the memory dump as tab-separated rows
+                            const memoryDump = agentMemory.map(m => m.replace('[SAVE] ', '')).join('\n\n');
+
+                            // Inject the data into the sheet using clipboard simulation
+                            await chrome.scripting.executeScript({
+                                target: { tabId: sheetsTab.id },
+                                world: "MAIN",
+                                func: async (data) => {
+                                    return new Promise(async (resolve) => {
+                                        try {
+                                            // Click center of sheet to find active cell
+                                            let targetX = window.innerWidth / 2;
+                                            let targetY = window.innerHeight / 2;
+                                            const activeCell = document.querySelector('.cell-input, [data-type="cell"], .editable-cell, #cell-editor, .waffle-content-area');
+                                            if (activeCell) {
+                                                const r = activeCell.getBoundingClientRect();
+                                                targetX = r.left + r.width / 2;
+                                                targetY = r.top + r.height / 2;
+                                            }
+
+                                            // Focus click
+                                            ['mousedown', 'mouseup', 'click'].forEach(type => {
+                                                document.elementFromPoint(targetX, targetY)?.dispatchEvent(
+                                                    new MouseEvent(type, { clientX: targetX, clientY: targetY, bubbles: true, cancelable: true })
+                                                );
+                                            });
+                                            await new Promise(r => setTimeout(r, 500));
+
+                                            // Clipboard paste
+                                            const blob = new Blob([data], { type: 'text/plain' });
+                                            const clipboardItem = new ClipboardItem({ 'text/plain': blob });
+                                            await navigator.clipboard.write([clipboardItem]);
+                                            document.execCommand('paste');
+                                            resolve({ success: true });
+                                        } catch(e) {
+                                            resolve({ success: false, error: e.message });
+                                        }
+                                    });
+                                },
+                                args: [memoryDump]
+                            });
+                            write(`[SHEETS] ✅ All ${agentMemory.length} items saved to Google Sheets!`, "debug");
+                        } catch(e) {
+                            write(`[SHEETS] Auto-save failed: ${e.message}. Data is still in memory.`, "error");
+                        }
+                    } else {
+                        // Quick extraction task — send to WhatsApp API
+                        try {
+                            const waRes = await fetch("http://localhost:3000/api/whatsapp-send", {
+                                method: "POST",
+                                headers: { "Content-Type": "application/json; charset=utf-8" },
+                                body: JSON.stringify({
+                                    message: `*NanoAgent Extraction*\n\n${agentMemory.map(m => m.replace('[SAVE] ', '- ')).join('\n')}\n\n_Task: ${goal}_`
+                                })
+                            });
+                            const waData = await waRes.json();
+                            if (waData.sent) write("[WHATSAPP] Extraction sent!", "debug");
+                            else if (waData.error) write(`[WHATSAPP] Error: ${waData.error}`, "debug");
+                        } catch (e) {
+                            write("[WHATSAPP] Delivery skipped.", "debug");
+                        }
                     }
                 }
             }
@@ -410,10 +552,34 @@ runBtn.onclick = async () => {
 
             let safePlanValue = plan.value;
             if (typeof safePlanValue === 'object' && safePlanValue !== null) { safePlanValue = JSON.stringify(safePlanValue); }
+            if (plan.action === "inject_data" && safePlanValue === "MEMORY") {
+                safePlanValue = agentMemory.map(m => m.replace('[SAVE] ', '')).join('\n\n');
+                write(`[SYSTEM OVERRIDE] Intercepted 'MEMORY' payload and expanded ${agentMemory.length} saved items for injection!`, "debug");
+            }
 
             let actionContext = tab.url ? tab.url.split('?')[0].split('#')[0] : tab.id;
-            if (plan.action === "new_tab" || plan.action === "navigate" || plan.action === "switch_tab") actionContext = "nav";
-            const currentActionKey = `${plan.action}-${actionContext}-${plan.action === "new_tab" || plan.action === "navigate" ? safePlanValue : plan.target_index}`;
+            let targetIdentifier = plan.target_index;
+            if (plan.action === "new_tab" || plan.action === "navigate" || plan.action === "switch_tab") {
+                actionContext = "nav";
+                targetIdentifier = safePlanValue;
+            } else if (plan.action === "extract_info" || plan.action === "extract") {
+                if (typeof plan.target_index !== "number") {
+                    targetIdentifier = safePlanValue;
+                }
+            }
+
+            const currentActionKey = `${plan.action}-${actionContext}-${targetIdentifier}`;
+
+            // 💥 V7.57: BANNED ELEMENT MEMORY SCRUBBING 💥
+            if (typeof plan.target_index === "number" && bannedElements.has(plan.target_index)) {
+                write(`[!] Model hallucinated BANNED index ${plan.target_index}. Scrubbing context...`, "error");
+                // The model saw the banned index in its actionHistory and blindly copied it!
+                // We MUST physically erase the trapped index from its history so it forgets it!
+                actionHistory = actionHistory.filter(msg => !msg.includes(`index ${plan.target_index}`));
+                actionHistory.push(`[SYSTEM UPDATE] You just tried to select index ${plan.target_index}, but it DOES NOT EXIST. Your corrupted memories have been deleted. You MUST read the VISIBLE ELEMENTS list carefully and pick a valid, existing index number!`);
+                await new Promise(r => setTimeout(r, 2000));
+                continue;
+            }
 
             recentActionKeys.push(currentActionKey);
             if (recentActionKeys.length > 8) recentActionKeys.shift();
@@ -428,8 +594,16 @@ runBtn.onclick = async () => {
                 }
 
                 write(`[!] Loop Trap Detected. Forcing reroute...`, "error");
-                let trapMsg = `[SYSTEM FATAL BLOCK]: You are caught in a loop trying to ${plan.action} on index ${plan.target_index}. THIS IS A TRAP. Pick a new target or change your action.`;
+                let trapMsg = `[SYSTEM FATAL BLOCK]: You are caught in a loop trying to ${plan.action} on index ${plan.target_index || 'N/A'}. THIS IS A TRAP. If you opened a new tab recently, you MUST use 'switch_tab' FIRST! Otherwise, pick a new target entirely.`;
                 if (plan.action === "new_tab") trapMsg = `[SYSTEM FATAL BLOCK]: You are endlessly spawning background tabs! STOP. You MUST use 'switch_tab' (using the Tab Number from AVAILABLE TABS) to move your vision to the tabs you just created before you do anything else!`;
+
+                // 💥 V7.57: BANNED ELEMENT EXECUTION 💥
+                if (typeof plan.target_index === "number") {
+                    bannedElements.add(plan.target_index);
+                    trapMsg = `[SYSTEM FATAL BLOCK]: You are caught in a loop! The system has physically DELETED index ${plan.target_index} from your vision. You CANNOT select it anymore. You MUST pick a new target!`;
+                    write(`[!] Index ${plan.target_index} has been BANNED from LLM vision!`, "error");
+                }
+
                 actionHistory.push(trapMsg);
                 await new Promise(r => setTimeout(r, 3000));
                 continue;
@@ -488,6 +662,7 @@ runBtn.onclick = async () => {
                     write(`Opening Background Tab: ${targetUrl}`, "debug");
                     // 🚀 V7.57 NEW: Open new tabs in background so the agent doesn't lose its context!
                     await chrome.tabs.create({ url: targetUrl, active: false });
+                    actionHistory.push(`[SYSTEM UPDATE] Successfully created background tab for ${targetUrl}. IMPORTANT: Your vision is still on the OLD page. You MUST use 'switch_tab' in your next step to see the new page!`);
                 }
                 else {
                     write(`Navigating to: ${targetUrl}`, "debug");
@@ -506,7 +681,29 @@ runBtn.onclick = async () => {
 
                 if (typeof plan.target_index === "number") {
                     const el = elements.find(e => e.index === plan.target_index);
-                    if (el && el.text !== "[No Text]") foundText = el.text;
+                    if (el && el.text !== "[No Text]") {
+                        // 💥 V7.57: MODAL HALLUCINATION OVERRIDE 💥
+                        if (el.text.includes("[POPUP/MODAL ACTION]")) {
+                            write(`[!] System Override: Intercepted blind extraction on a Popup Modal button. Converting to [CLICK]...`, "error");
+                            actionHistory.push(`[SYSTEM UPDATE] You erroneously tried to EXTRACT text from a popup close button! The system intervened and CLICKED it shut for you. Proceed with your original extraction target now.`);
+                            plan.action = "click";
+
+                            // Immediately execute the click block for the modal button instead
+                            const execResults = await chrome.scripting.executeScript({
+                                target: { tabId: tab.id }, world: "MAIN",
+                                func: async (sel) => {
+                                    return new Promise(resolve => {
+                                        const tEl = document.querySelector(sel);
+                                        if (tEl) tEl.click();
+                                        resolve({ success: true });
+                                    });
+                                }, args: [el.sel || ""]
+                            });
+                            await new Promise(r => setTimeout(r, 2000));
+                            continue; // Skip the rest of the extraction flow since we handled the click
+                        }
+                        foundText = el.text;
+                    }
                 }
 
                 if (!foundText && safePlanValue && safePlanValue.length > 3 && safePlanValue !== "[No Text]" && !safePlanValue.includes("[latest_")) {
@@ -517,12 +714,25 @@ runBtn.onclick = async () => {
                     // 🛡️ V7.57: Block duplicate extractions at the CODE level
                     const isDuplicate = agentMemory.some(m => m.includes(foundText));
                     if (isDuplicate) {
+                        consecutiveDuplicates++;
                         write(`[!] Duplicate extraction blocked: [${foundText}]`, "debug");
-                        actionHistory.push(`[SYSTEM OVERRIDE] You already have "${foundText}" in SAVED MEMORY. Do NOT extract it again! Navigate to the NEXT target NOW.`);
+                        
+                        // 💥 V7.57: AUTO-SCROLL ON DEADLOCK 💥
+                        if (consecutiveDuplicates >= 2) {
+                            write(`[!] ${consecutiveDuplicates} consecutive duplicates! Auto-scrolling to reveal new content...`, "error");
+                            await chrome.scripting.executeScript({ target: { tabId: tab.id }, func: () => window.scrollBy({ top: 700, behavior: 'smooth' }) });
+                            await new Promise(r => setTimeout(r, 2000));
+                            actionHistory.push(`[SYSTEM UPDATE] You were stuck extracting duplicates, so the system has auto-scrolled the page. New content is now visible below. Look at the VISIBLE ELEMENTS list carefully for NEW items you haven't extracted yet! If all visible items are still duplicates, use 'scroll' again OR 'navigate' to a new Google search.`);
+                            consecutiveDuplicates = 0; // Reset after scroll
+                            continue; // Skip to next iteration to re-scan DOM
+                        } else {
+                            actionHistory.push(`[SYSTEM OVERRIDE] You already have "${foundText}" in SAVED MEMORY. The data you need might be BELOW the visible area — try 'scroll' to reveal more content, or 'click' on a "Show more" button!`);
+                        }
                     } else {
+                        consecutiveDuplicates = 0; // Reset on successful extraction
                         write(`Memorized: [${foundText}]`, "ai");
                         agentMemory.push("[SAVE] " + foundText);
-                        actionHistory.push(`[SYSTEM] Successfully saved "${foundText}". ${agentMemory.length} item(s) in memory. If more items are needed, NAVIGATE to the next target now!`);
+                        actionHistory.push(`[SYSTEM] Successfully saved "${foundText}". ${agentMemory.length} item(s) in memory. If more items are needed, try scrolling down or navigating to reveal new content!`);
                     }
                 } else {
                     write(`[!] Extraction failed. Invalid target or empty value.`, "error");
@@ -815,6 +1025,20 @@ runBtn.onclick = async () => {
                                         }
 
                                         tEl.dispatchEvent(new Event('change', { bubbles: true, composed: true }));
+
+                                        // 💥 V7.57: AUTO-SUBMIT ENTER KEYPRESS 💥
+                                        // Most forms (like search bars) need Enter to be pressed to actually submit the query.
+                                        const enterEventInit = { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true, composed: true, cancelable: true };
+                                        tEl.dispatchEvent(new KeyboardEvent('keydown', enterEventInit));
+                                        tEl.dispatchEvent(new KeyboardEvent('keypress', enterEventInit));
+                                        tEl.dispatchEvent(new KeyboardEvent('keyup', enterEventInit));
+
+                                        // Also try dispatching a generic submit event if it's in a form
+                                        const parentForm = tEl.closest('form');
+                                        if (parentForm) {
+                                            try { parentForm.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })); } catch (e) { }
+                                        }
+
                                         resolve({ success: true });
                                     } else {
                                         const originalOpen = window.open;
@@ -827,6 +1051,7 @@ runBtn.onclick = async () => {
                                         tEl.dispatchEvent(new MouseEvent('mousedown', Object.assign({ buttons: 1 }, evtOpts)));
                                         tEl.dispatchEvent(new MouseEvent('mouseup', evtOpts));
 
+                                        const originalUrl = window.location.href.split('#')[0];
                                         // Aggressive Click: Click both the exact element and its actionable parent
                                         el.click();
                                         if (tEl !== el) tEl.click();
@@ -838,11 +1063,17 @@ runBtn.onclick = async () => {
                                         }
                                         setTimeout(() => { window.open = originalOpen; }, 1000);
 
-                                        // Ironclad Action Fallback: Force URL navigation if standard click injection fails SPAs
-                                        if (elementHref) {
-                                            setTimeout(() => { if (!window.location.href.includes(elementHref)) window.location.href = elementHref; }, 800);
-                                        } else if (tEl.tagName === 'A' && tEl.href) {
-                                            setTimeout(() => { if (!window.location.href.includes(tEl.href)) window.location.href = tEl.href; }, 800);
+                                        // Ironclad SPA Navigation Fallback: Compare exact URL. If a click fails to transition the SPA, force a hard redirect.
+                                        const fallbackHref = elementHref || (tEl.tagName === 'A' ? tEl.href : null);
+                                        if (fallbackHref) {
+                                            setTimeout(() => {
+                                                const newUrl = window.location.href.split('#')[0];
+                                                if (originalUrl === newUrl) {
+                                                    // Click failed to navigate SPA, pulling the rip cord
+                                                    console.warn('[NanoAgent] Apparent SPA click failure detected. Forcing hard navigation to:', fallbackHref);
+                                                    window.location.href = fallbackHref;
+                                                }
+                                            }, 800);
                                         }
                                         resolve({ success: true });
                                     }
