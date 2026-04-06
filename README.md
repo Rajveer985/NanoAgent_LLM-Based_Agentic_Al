@@ -2,7 +2,7 @@
   <img src="assets/logo.png" width="180" alt="NanoAgent Logo">
 </p>
 
-<h1 align="center">🤖 NanoAgent — Autonomous Browser AI</h1>
+<h1 align="center"> NanoAgent — Autonomous Browser AI</h1>
 
 <p align="center">
   <em>An open-source, LLM-powered Chrome extension that sees, thinks, and acts on the web for you.</em>
@@ -28,7 +28,7 @@
 
 ---
 
-## 🧠 What is NanoAgent?
+## What is NanoAgent?
 
 NanoAgent is a **fully autonomous web agent** that lives inside your Chrome browser's side panel. Give it a task in plain English, and it will:
 
@@ -52,19 +52,19 @@ https://github.com/user-attachments/assets/ff0c2171-3298-43f8-8c1e-8633286a4755.
 
 | Feature | Description |
 |---------|-------------|
-| 🧠 **Dual-Brain Architecture** | Separate Planner (reasoning) and Navigator (action) models for superior task execution |
-| 🌐 **Universal LLM Support** | Works with Gemini, OpenAI, OpenRouter, DeepSeek, Groq, Ollama, LM Studio, and any OpenAI-compatible provider |
-| 👁️ **DOM Vision Engine** | Reads and indexes interactive page elements in real-time for precise actions |
-| 🔄 **Multi-Tab Navigation** | Seamlessly switches between tabs to gather information across multiple pages |
-| 📋 **Persistent Memory** | Stores extracted data across steps and compiles final results |
-| 📱 **WhatsApp Remote Control** | Send commands from your phone, get results delivered back via WhatsApp |
-| ⚡ **Auto-Retry & Self-Healing** | Gracefully handles API errors, rate limits, and failed actions with automatic retries |
-| 🔐 **Privacy-First** | All processing happens locally in your browser. No data leaves your machine except LLM API calls |
-| 🎨 **Beautiful Dark UI** | Sleek, modern sidepanel interface with real-time execution logs |
+|  **Dual-Brain Architecture** | Separate Planner (reasoning) and Navigator (action) models for superior task execution |
+|  **Universal LLM Support** | Works with Gemini, OpenAI, OpenRouter, DeepSeek, Groq, Ollama, LM Studio, and any OpenAI-compatible provider |
+|  **DOM Vision Engine** | Reads and indexes interactive page elements in real-time for precise actions |
+|  **Multi-Tab Navigation** | Seamlessly switches between tabs to gather information across multiple pages |
+|  **Persistent Memory** | Stores extracted data across steps and compiles final results |
+|  **WhatsApp Remote Control** | Send commands from your phone, get results delivered back via WhatsApp |
+|  **Auto-Retry & Self-Healing** | Gracefully handles API errors, rate limits, and failed actions with automatic retries |
+|  **Privacy-First** | All processing happens locally in your browser. No data leaves your machine except LLM API calls |
+|  **Beautiful Dark UI** | Sleek, modern sidepanel interface with real-time execution logs |
 
 ---
 
-## 🚀 Quick Start
+##  Quick Start
 
 ### 1. Download & Install
 
@@ -104,7 +104,7 @@ cd NanoAgent_LLM-Based_Agentic_Al
 
 ---
 
-## 📸 Screenshots
+##  Screenshots
 
 <p align="center">
   <img src="assets/screenshot-sidepanel.png" width="300" alt="NanoAgent Sidepanel">
@@ -125,17 +125,17 @@ NanoAgent uses a **Dual-Brain Architecture** — two separate LLM instances work
 └──────────────────┬──────────────────────────┘
                    │
          ┌─────────▼──────────┐
-         │   🧠 PLANNER LLM   │ ← Decides WHAT to do
+         │    PLANNER LLM   │ ← Decides WHAT to do
          │  (Task Reasoning)  │    "I need to Google this"
          └─────────┬──────────┘
                    │
          ┌─────────▼──────────┐
-         │  🧭 NAVIGATOR LLM  │ ← Decides HOW to do it
+         │   NAVIGATOR LLM  │ ← Decides HOW to do it
          │   (DOM Actions)    │    "Click element [3], type query"
          └─────────┬──────────┘
                    │
          ┌─────────▼──────────┐
-         │  🖥️ CHROME BROWSER  │ ← Executes the action
+         │   CHROME BROWSER  │ ← Executes the action
          │  (Content Script)  │    Clicks, types, navigates
          └─────────┬──────────┘
                    │
@@ -176,7 +176,7 @@ Or use the pre-built macOS app from the `dist/` folder.
 
 ---
 
-## 🔌 Supported Providers
+##  Supported Providers
 
 NanoAgent works with **any OpenAI-compatible API endpoint**, plus native Gemini support:
 
@@ -200,7 +200,7 @@ For zero-cost usage, use **OpenRouter** with free models:
 
 ---
 
-## 📁 Project Structure
+##  Project Structure
 
 ```
 NanoAgent/
@@ -222,7 +222,7 @@ NanoAgent/
 
 ---
 
-## 🛡️ Privacy & Security
+##  Privacy & Security
 
 - **No data collection.** NanoAgent does not send any data to any server other than your chosen LLM API.
 - **API keys are stored locally** in Chrome's `chrome.storage.sync` — they never leave your browser.
@@ -231,25 +231,25 @@ NanoAgent/
 
 ---
 
-## 🤝 Contributing
+##  Contributing
 
 Contributions are welcome! Feel free to:
 
-1. 🍴 Fork the repository
-2. 🌿 Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. 💾 Commit your changes (`git commit -m 'Add amazing feature'`)
-4. 📤 Push to the branch (`git push origin feature/amazing-feature`)
-5. 🔃 Open a Pull Request
+1.  Fork the repository
+2.  Create a feature branch (`git checkout -b feature/amazing-feature`)
+3.  Commit your changes (`git commit -m 'Add amazing feature'`)
+4.  Push to the branch (`git push origin feature/amazing-feature`)
+5.  Open a Pull Request
 
 ---
 
-## 📄 License
+##  License
 
 This project is licensed under the **NIIT License** — see the [LICENSE](LICENSE) file for details.
 
 ---
 
-## 👨‍💻 Author
+##  Author
 
 **Rajveer Sahay**  
 Built with ☕ and curiosity.
