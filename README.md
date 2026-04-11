@@ -11,7 +11,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/Manifest-V3-blue?style=flat-square&logo=googlechrome&logoColor=white" alt="Manifest V3">
   <img src="https://img.shields.io/badge/Release-v1.1-brightgreen?style=flat-square" alt="Release">
-  <img src="https://img.shields.io/badge/License-NIIT-yellow?style=flat-square" alt="License">
+  <img src="https://img.shields.io/badge/License-Custom%20(Non--Commercial)-yellow?style=flat-square" alt="License">
   <img src="https://img.shields.io/badge/Platform-Chrome-red?style=flat-square&logo=googlechrome&logoColor=white" alt="Platform">
   <img src="https://img.shields.io/badge/LLM-Any_Provider-purple?style=flat-square" alt="LLM">
 </p>
@@ -244,8 +244,7 @@ Contributions are welcome! Feel free to:
 ---
 
 ##  License
-
-This project is licensed under the **NIIT License** — see the [LICENSE](LICENSE) file for details.
+This project is licensed under a **Custom License (Attribution-NonCommercial)** — see the [LICENSE](LICENSE) file for details. You may use, modify, and distribute this software with proper attribution, but commercial use and resale are strictly prohibited.
 
 ---
 
