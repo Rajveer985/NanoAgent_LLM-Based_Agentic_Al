@@ -1,0 +1,1193 @@
+const log = document.getElementById("log");
+const runBtn = document.getElementById("run");
+const stopBtn = document.getElementById("stop");
+let keepRunning = false;
+let actionHistory = [];
+let agentMemory = [];
+
+function write(msg, type = "") {
+    if (document.querySelector('.empty-state')) log.innerHTML = '';
+    const wrapper = document.createElement("div"); wrapper.className = "msg-wrapper";
+    const div = document.createElement("div");
+    if (type === "result-card") { div.innerHTML = msg; div.className = "msg msg-card"; }
+    else {
+        div.textContent = msg;
+        if (type === "user") div.className = "msg msg-user";
+        else if (type === "ai") div.className = "msg msg-ai";
+        else if (type === "error") div.className = "msg msg-err";
+        else if (type === "debug") div.className = "msg-debug";
+        else div.className = "msg";
+    }
+    wrapper.appendChild(div); log.appendChild(wrapper); log.scrollTop = log.scrollHeight;
+}
+
+async function clearOverlays() {
+    try {
+        let allTabs = await chrome.tabs.query({ currentWindow: true });
+        for (let t of allTabs) {
+            try {
+                await chrome.scripting.executeScript({
+                    target: { tabId: t.id },
+                    func: () => document.querySelectorAll(".nano-overlay").forEach(el => el.remove())
+                });
+            } catch (e) { }
+        }
+    } catch (e) { }
+}
+
+function DOMScanner(showOverlays) {
+    document.querySelectorAll(".nano-overlay").forEach(el => el.remove());
+    function getUniqueSelector(el) {
+        if (el.id) return '#' + el.id;
+        let path = []; let current = el;
+        while (current && current.nodeType === Node.ELEMENT_NODE) {
+            let selector = current.nodeName.toLowerCase();
+            if (current.parentElement) {
+                let siblings = Array.from(current.parentElement.children);
+                if (siblings.length > 1) selector += ':nth-child(' + (siblings.indexOf(current) + 1) + ')';
+            }
+            path.unshift(selector); current = current.parentElement;
+        }
+        return path.join(' > ');
+    }
+
+    // 🛡️ V7.57: NOISE DETECTOR — checks if element is inside a sidebar, footer, or nav noise zone
+    function isNoiseContainer(el) {
+        let parent = el;
+        for (let i = 0; i < 5 && parent; i++) {
+            const role = (parent.getAttribute('role') || '').toLowerCase();
+            const ariaLabel = (parent.getAttribute('aria-label') || '').toLowerCase();
+            const tag = parent.tagName;
+            const id = (parent.id || '').toLowerCase();
+            const cls = (parent.className || '').toString().toLowerCase();
+
+            // Skip sidebar navigation, footers, cookie banners
+            if (role === 'navigation' && parent !== el) return true;
+            if (role === 'complementary') return true;
+            if (tag === 'FOOTER' || tag === 'ASIDE') return true;
+            if (id.includes('sidebar') || id.includes('side-nav') || id.includes('cookie') || id.includes('consent')) return true;
+            if (cls.includes('sidebar') || cls.includes('side-nav') || cls.includes('cookie-banner') || cls.includes('footer')) return true;
+            if (ariaLabel.includes('sidebar') || ariaLabel.includes('cookie')) return true;
+
+            parent = parent.parentElement;
+        }
+        return false;
+    }
+
+    const targets = document.querySelectorAll("input, button, a[href], textarea, select, [role='button'], [role='checkbox'], label, span, p, strong, b, h1, h2, h3, h4, h5, h6, div, pre, code, td, [contenteditable='true'], video, audio");
+
+    const visibleTargets = Array.from(targets).filter(el => {
+        if (el.tagName === "CANVAS" || el.tagName === "SVG" || el.tagName === "PATH") return false;
+
+        const rect = el.getBoundingClientRect();
+        const style = window.getComputedStyle(el);
+        return rect.width > 10 && rect.height > 10 &&
+            rect.top >= 0 && rect.top <= window.innerHeight &&
+            rect.left >= 0 && rect.left <= window.innerWidth &&
+            style.visibility !== 'hidden' && style.opacity !== '0' && style.display !== 'none';
+    });
+
+    const meaningfulElements = visibleTargets.filter(el => {
+        if (el.tagName === "INPUT" && (el.className || "").includes("name-input")) return false;
+        if (el.id && el.id.includes("name-box")) return false;
+
+        const tag = el.tagName;
+        const isInput = ["INPUT", "TEXTAREA", "SELECT", "BUTTON"].includes(tag) || el.isContentEditable;
+        const isLink = tag === "A" && el.href;
+        const isInteractive = el.getAttribute("role") === "button" || window.getComputedStyle(el).cursor === "pointer";
+        const text = (el.innerText || "").trim().toLowerCase();
+        const isPrice = /[\$₹£€]/.test(text) && text.length > 0 && text.length < 40;
+        const isLeafText = el.childElementCount === 0 && text.length > 0 && text.length < 80;
+
+        const ariaLabel = (el.getAttribute("aria-label") || "").toLowerCase();
+        const cls = (el.className || "").toString().toLowerCase();
+        const id = (el.id || "").toLowerCase();
+        const isModalAction = ariaLabel.includes("close") || ariaLabel.includes("dismiss") || text === "x" || text === "close" || text === "dismiss" || text === "no thanks" || text === "accept" || text === "agree" || cls.includes("close") || cls.includes("dismiss") || id.includes("close") || id.includes("dismiss");
+
+        // Always include spreadsheet formula bars
+        if (id.includes("formula-bar") || id.includes("formulabar") || ariaLabel.includes("formula bar")) return true;
+
+        // 🛡️ Reject oversized containers (full-page divs)
+        const rect = el.getBoundingClientRect();
+        if (rect.width > window.innerWidth * 0.8 || rect.height > window.innerHeight * 0.8) {
+            if (!el.isContentEditable) return false;
+        }
+
+        // 🛡️ Skip empty decorative elements, UNLESS they are [POPUP/MODAL ACTIONS]
+        if (!isInput && !isLink && text.length === 0 && !isModalAction) return false;
+
+        // 🛡️ Skip obvious generic search tabs and menu items that confuse local LLMs
+        if (/^(news|images|shopping|videos|forums|more|tools|ai mode|sign in|login|register)$/.test(text)) return false;
+
+        // 🛡️ Skip sidebar/footer/nav noise (but NEVER skip inputs, main content, or [POPUP/MODAL ACTIONS])
+        if (!isInput && !isModalAction && isNoiseContainer(el)) return false;
+
+        return isInput || isLink || isInteractive || isPrice || isLeafText || isModalAction;
+    });
+
+    // 🔥 DEDUPLICATION — collapse elements at same grid position
+    const uniqueElements = [];
+    const seenCoordinates = new Set();
+    for (let el of meaningfulElements) {
+        const rect = el.getBoundingClientRect();
+        const gridKey = `${Math.round(rect.top / 10)}-${Math.round(rect.left / 10)}`;
+        if (!seenCoordinates.has(gridKey)) {
+            seenCoordinates.add(gridKey);
+            uniqueElements.push(el);
+        }
+    }
+
+    // 🔥 PRIORITY SCORING — rank by actionability, then cap at 50
+    const scored = uniqueElements.map(el => {
+        let priority = 0;
+        const ariaLabel = (el.getAttribute("aria-label") || "").toLowerCase();
+        const elText = (el.innerText || "").trim().toLowerCase();
+        const cls = (el.className || "").toString().toLowerCase();
+        const id = (el.id || "").toLowerCase();
+        const tag = el.tagName;
+
+        let isModalAction = false;
+        if (ariaLabel.includes("close") || ariaLabel.includes("dismiss") || elText === "x" || elText === "close" || elText === "dismiss" || elText === "no thanks" || elText === "accept" || elText === "allow" || elText === "agree") {
+            isModalAction = true;
+        }
+        if (cls.includes("close") || cls.includes("dismiss") || id.includes("close") || id.includes("dismiss")) {
+            isModalAction = true;
+        }
+
+        if (isModalAction) priority = 1000;
+        else if (["INPUT", "TEXTAREA", "SELECT"].includes(tag) || el.isContentEditable) priority = 100;
+        else if (tag === "BUTTON" || el.getAttribute("role") === "button" || tag === "VIDEO") priority = 90;
+        else if (tag === "A" && el.href) priority = 80;
+        else if (window.getComputedStyle(el).cursor === "pointer") priority = 75;
+        else if (/[\$₹£€]/.test((el.innerText || "").trim())) priority = 70;
+        else priority = 50;
+
+        return { el, priority, isModalAction };
+    });
+
+    scored.sort((a, b) => b.priority - a.priority);
+    const finalElements = scored.slice(0, 50);
+
+    return finalElements.map((item, index) => {
+        const el = item.el;
+        let text = "";
+        if (item.isModalAction) {
+            text = `[POPUP/MODAL ACTION] ${el.innerText || el.getAttribute("aria-label") || 'Close/Accept'}`;
+        } else if (el.tagName === "A" && el.getAttribute("aria-label")) {
+            text = el.getAttribute("aria-label");
+        } else if (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable) {
+            text = el.value || el.placeholder || el.innerText || "Rich Text Field";
+        } else {
+            text = (el.innerText || "").trim();
+        }
+
+        text = text.substring(0, 70).replace(/\n/g, " ");
+        let fullHref = el.href || "";
+        let displayHref = fullHref.length > 60 ? fullHref.substring(0, 60) + "..." : fullHref;
+
+        if (showOverlays) {
+            const rect = el.getBoundingClientRect();
+            const div = document.createElement("div"); div.className = "nano-overlay";
+            div.style.position = "fixed"; div.style.left = rect.left + "px"; div.style.top = rect.top + "px";
+            div.style.width = rect.width + "px"; div.style.height = rect.height + "px";
+            div.style.border = "2px solid #06b6d4"; div.style.borderRadius = "4px"; div.style.zIndex = "2147483647"; div.style.pointerEvents = "none";
+            const badge = document.createElement("div"); badge.innerText = index;
+            badge.style.position = "absolute"; badge.style.top = "-18px"; badge.style.left = "-2px";
+            badge.style.background = "#06b6d4"; badge.style.color = "#0f172a"; badge.style.fontWeight = "bold"; badge.style.fontSize = "11px"; badge.style.padding = "2px 6px"; badge.style.borderRadius = "4px";
+            div.appendChild(badge); document.body.appendChild(div);
+        }
+        return { index: index, tag: el.tagName, text: text || "[No Text]", href: displayHref, fullHref: fullHref, sel: getUniqueSelector(el) };
+    });
+}
+
+// 💥 V7.57 EXPLICIT ERROR HANDLING UPDATE 💥
+async function callLLM(goal, domElements, apiKey, modelName, history, memory, url, temperature, provider, baseUrl, tabsListString) {
+    const visibleElementsString = JSON.stringify(domElements.map(e => `${e.index}: <${e.tag}> ${e.text} ${e.href ? '(URL: ' + e.href + ')' : ''}`));
+
+    const prompt = `YOU ARE A STRICT, SEQUENTIAL BROWSER AGENT.
+USER GOAL: "${goal}"
+CURRENT URL: "${url}"
+AVAILABLE TABS: ${tabsListString}
+RECENT ACTIONS: ${history.slice(-32).join(" | ")}
+SAVED MEMORY: ${memory.join(" | ")}
+
+VISIBLE ELEMENTS:
+${visibleElementsString}
+
+STEP 0 — CLASSIFY THE TASK (do this silently before choosing an action):
+- NAVIGATION TASK: The user ONLY wants to GO somewhere or SEARCH. Goal is met when the target is VISIBLE. Do NOT click into results.
+- EXTRACTION TASK: The user wants you to FIND and REPORT info. Goal is met ONLY AFTER you use extract_info on EVERY required target. If you found what you need on the CURRENT page, you MUST 'navigate' or 'switch_tab' to find the rest! Do NOT extract the same thing twice.
+- ACTION TASK: The user wants you to DO something (e.g., click, type, pause, open multiple things). Goal is met ONLY when EVERY requested action is physically completed. If the prompt has multiple steps (e.g. "open tabs AND do X"), it is a complex ACTION TASK.
+- TRANSFER TASK: The user asked to extract data AND paste/store it somewhere else (like Google Sheets). Goal is met ONLY AFTER you physically navigate to the destination and PASTE/INJECT the data! Simply extracting it to memory is FAILURE.
+- PLANNING TASK: The user wants you to 'plan', 'budget', 'research', or 'compare' something. You MUST extract all relevant information AND explicitely store it somewhere safe (use 'https://sheets.new' via navigate or new_tab, then inject_data). Do NOT just say you found it.
+
+CRITICAL DIRECTIVES:
+1. STRICT MULTI-STEP RULE: If the request has multiple phases (e.g., "Find X and paste it into Y"), DO NOT declare "is_goal_met: true" until you have physically performed the paste/injection at the final destination!
+2. ADAPTIVE INTELLIGENCE: If a search yields "no matches found" or an error, pivot your strategy (e.g., try different search terms, or navigate directly via URL).
+3. MODAL DEFENSE: If you see an element tagged [POPUP/MODAL ACTION], you are blocked by a popup window (Cookie Banner, Newsletter, Login). You MUST use 'click' on it immediately to dismiss it before trying to extract information!
+4. SPREADSHEET INJECTION: You can ONLY use 'inject_data' if the CURRENT URL is actively a Google Sheets/Excel page. If you need to save data to a sheet but are on a different site, you MUST first 'navigate' or 'new_tab' to 'https://sheets.new', wait for it to load, and ONLY THEN use 'inject_data'.
+5. THE TAB RULE: Never say goal met just because a tab opened, UNLESS opening the tab was the *only* instruction given.
+6. EFFICIENT URLS: You may use direct handles if you know them (e.g., youtube.com/@markiplier/videos). If unknown, navigate to the site and search.
+7. ONE ACTION PER TURN: Never extract and navigate in the same step.
+8. TAB MANAGEMENT: 'new_tab' opens tabs silently in the BACKGROUND. IMPORTANT: You MUST read the 'AVAILABLE TABS' array to find the exact Tab Number of the page you want, then use 'switch_tab' to make it [ACTIVE]. Do NOT guess tab numbers!
+8. NO BLIND EXTRACTIONS: You can ONLY extract information from the currently [ACTIVE] tab. If the active tab is an internal page or lacks the data, you MUST switch tabs first. Do NOT hallucinate data!
+9. MEDIA PLAYBACK: To pause or play a video or audio file, explicitly click the media player itself or its play/pause button. Do not search for a text input to pause.
+10. AVOID REPEATS: Once an item appears in SAVED MEMORY, you MUST NOT extract it again. Your next step must be to find the next item.
+11. SHORT REASONING: Keep under 15 words. Start with "[NAVIGATION]", "[EXTRACTION]", or "[ACTION]".
+12. MEMORY DUMP TRICK: To instantly paste EVERYTHING you have saved in memory into Google Sheets, just output exactly "value": "MEMORY". Do NOT try to manually re-type all the facts into the JSON yourself!
+13. SHORT EXTRACTIONS: NEVER extract an entire page of text at once. Extract specific, small chunks (e.g. one hotel or one price). Your 'value' string MUST NEVER exceed 200 characters!
+14. SEARCH BAR & AUTOCOMPLETE: Typing into a search bar often does NOT submit the search! After you use 'type', your next action MUST BE 'click' on the autocomplete dropdown result or the "Search" button. NEVER use 'type' into the exact same search bar twice in a row!
+15. NAVIGATION VS EXTRACTION: Short strings like "Places", "Hotels", "Flights", or "Overview" are CLICKABLE TABS. You must use 'click' to navigate to them! NEVER use 'extract_info' on navigation tabs. You should only 'extract_info' on actual detailed paragraphs or precise prices (e.g., "$150/night", "Shaniwar Wada Palace is a historical fort...").
+16. GOOGLE SEARCH RESULTS: If you are searching Google for complex data (like hotel prices) and the EXACT answers aren't perfectly visible in the snippet text, YOU MUST 'click' a blue search result link to enter the actual website! DO NOT desperately 'extract_info' useless snippets or ads (e.g. "Rooms & Suites", "hyatt.com") hoping they contain data!
+17. MISSION ACCOMPLISHED: Once you have completely satisfied the user's objective (e.g., extracting 5 places, 5 hotels, and 5 flights) and saved everything they asked for, your final action MUST BE 'finish'. Do not wander around endlessly!
+
+RESPONSE FORMAT MUST BE EXACT JSON:
+{
+  "reasoning": "[TASK_TYPE] Brief 10-word summary",
+  "is_goal_met": true/false,
+  "action": "click" | "type" | "scroll" | "finish" | "new_tab" | "navigate" | "extract_info" | "switch_tab" | "inject_data",
+  "target_index": number (DOM index or Tab Number),
+  "value": "RAW TEXT ONLY (Max 200 chars). NO NEWLINES. ESCAPE ALL QUOTES."
+}
+
+CRITICAL OPSEC: DO NOT add any extra keys! DO NOT write arrays! Output ONLY this exact 5-property JSON object!`;
+
+    let retries = 3;
+    let parseErrorHint = "";
+    while (retries > 0) {
+        try {
+            if (provider === "openai") {
+                const endpoint = baseUrl || "https://api.openai.com/v1/chat/completions";
+                const response = await fetch(endpoint, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}` },
+                    body: JSON.stringify({
+                        model: modelName,
+                        messages: [{ role: "user", content: prompt + parseErrorHint }],
+                        temperature: temperature,
+                        response_format: { type: "json_object" }
+                    })
+                });
+
+                // 💥 V7.57: TRUTH TELLER ERROR CATCHER 💥
+                if (!response.ok) {
+                    if (response.status === 404) throw new Error(`HTTP 404 (Not Found): The Model or Endpoint does not exist. (Did you send an OpenRouter model to Gemini?)`);
+                    if (response.status === 402) throw new Error(`HTTP 402 (Payment Required): You have run out of credits on this provider (e.g. OpenRouter). Please top up your balance.`);
+                    if (response.status === 401) throw new Error(`HTTP 401 (Unauthorized): Invalid API Key.`);
+                    throw new Error(`HTTP ${response.status}: Server error or bad request.`);
+                }
+
+                const data = await response.json();
+                if (data.error) throw new Error(data.error.message);
+
+                let contentText = data.choices[0].message.content.trim();
+                if (contentText.startsWith("\`\`\`")) {
+                    contentText = contentText.replace(/^\`\`\`([a-zA-Z]+)?\n/, "").replace(/\n\`\`\`$/, "");
+                }
+                return JSON.parse(contentText);
+            } else {
+                let fullModelName = modelName.startsWith("models/") ? modelName : `models/${modelName}`;
+                const apiUrl = `https://generativelanguage.googleapis.com/v1beta/${fullModelName}:generateContent?key=${apiKey}`;
+                const response = await fetch(apiUrl, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        contents: [{ parts: [{ text: prompt + parseErrorHint }] }],
+                        generationConfig: { responseMimeType: "application/json", temperature: temperature }
+                    })
+                });
+
+                // 💥 V7.57: TRUTH TELLER ERROR CATCHER 💥
+                if (!response.ok) {
+                    let exactErrorMsg = `HTTP ${response.status}: Server error or bad request.`;
+                    try {
+                        const errorData = await response.json();
+                        if (errorData && errorData.error && errorData.error.message) {
+                            exactErrorMsg = `HTTP ${response.status}: ${errorData.error.message}`;
+                        }
+                    } catch (e) { }
+
+                    if (response.status === 404) throw new Error(`HTTP 404 (Not Found): Model '${modelName}' not found. (Did you select Gemini but enter an OpenRouter model?)`);
+                    if (response.status === 401) throw new Error(`HTTP 401 (Unauthorized): Invalid API Key.`);
+
+                    throw new Error(exactErrorMsg);
+                }
+
+                const data = await response.json();
+                if (data.error) throw new Error(data.error.message);
+
+                let contentText = data.candidates[0].content.parts[0].text.trim();
+                if (contentText.startsWith("\`\`\`")) {
+                    contentText = contentText.replace(/^\`\`\`([a-zA-Z]+)?\n/, "").replace(/\n\`\`\`$/, "");
+                }
+                return JSON.parse(contentText);
+            }
+        } catch (error) {
+            retries--;
+            if (retries === 0) throw error;
+
+            // 🛡️ V7.57: Self-Correcting LLM JSON Errors
+            if (error instanceof SyntaxError) {
+                console.warn("[NanoAgent] Target Model hallucinated invalid JSON. Retrying with explicit formatting hint...", error.message);
+                parseErrorHint = `\n\n[SYSTEM FATAL ERROR ON PREVIOUS ATTEMPT]: Your last response caused a JSON SyntaxError: ${error.message}. You MUST properly escape all double quotes (\\") and newlines (\\n) inside the "value" string field. Do NOT output raw newlines or unescaped quotes inside strings. You MUST output ONLY 100% valid JSON.`;
+            } else if (error.message.includes("404") || error.message.includes("401")) {
+                throw error; // Don't retry auth/not-found errors
+            } else {
+                console.log("[NanoAgent] API/Network Error caught. Retrying...", error);
+            }
+
+            await new Promise(resolve => setTimeout(resolve, 3000));
+        }
+    }
+}
+
+runBtn.onclick = async () => {
+    keepRunning = true; actionHistory = []; agentMemory = [];
+    let lastActionKey = "";
+    let loopCounter = 0;
+    let loopTrapCount = 0;
+    let bannedElements = new Set(); // 🚀 V7.57: Banned Elements List for Stubborn Models
+    let currentContextUrl = ""; // 🚀 V7.57: Track URL across tabs to preserve bans
+    let consecutiveDuplicates = 0; // 🚀 V7.57: Track consecutive duplicate extractions for auto-scroll
+    runBtn.style.display = "none"; stopBtn.style.display = "block"; log.innerHTML = "";
+
+    write("Verifying Authorization...", "debug");
+    try {
+        const authRes = await fetch("http://localhost:3000/api/auth-status");
+        await authRes.json();
+    } catch (err) {
+        // Backend offline -> no problem, extension is standalone now!
+        console.log("Local WhatsApp bridge is offline. Continuing in standalone mode.");
+    }
+
+    const goal = document.getElementById("prompt").value;
+    const showBoxes = document.getElementById("show-boxes").checked;
+
+    // 🧠 V7.57: SMART TASK CLASSIFIER 🧠
+    const planningKeywords = /\b(plan|vacation|travel|trip|holiday|budget|itinerary|guide|compare|research|schedule|costs?|prices?|top \d+)\b/i;
+    const isPlanningTask = planningKeywords.test(goal);
+    if (isPlanningTask) {
+        write(`[TASK MODE] Planning/Research detected — will auto-save to Google Sheets on completion.`, "debug");
+    } else {
+        write(`[TASK MODE] Quick extraction detected — results will be sent via WhatsApp API.`, "debug");
+    }
+
+    const { apiKey, plannerModel, navigatorModel, model, temperature, apiProvider, baseUrl } = await chrome.storage.sync.get(['apiKey', 'plannerModel', 'navigatorModel', 'model', 'temperature', 'apiProvider', 'baseUrl']);
+
+    if (!apiKey) {
+        write("No API Key found. Click Settings.", "error");
+        runBtn.style.display = "block"; stopBtn.style.display = "none"; return;
+    }
+
+    const selectedProvider = apiProvider || "gemini";
+    const defaultModel = selectedProvider === "gemini" ? "gemini-1.5-flash" : "meta-llama/llama-3.3-70b-instruct:free";
+    const selectedPlanner = plannerModel || model || defaultModel;
+    const selectedNavigator = navigatorModel || model || defaultModel;
+    const selectedTemp = temperature !== undefined ? parseFloat(temperature) : 0.7;
+
+    write(`Using Provider: ${selectedProvider.toUpperCase()}`, "debug");
+    write(`[PLANNER] ${selectedPlanner}`, "debug");
+    write(`[NAVIGATOR] ${selectedNavigator}`, "debug");
+    write(goal, "user");
+
+    let recentActionKeys = [];
+    for (let step = 1; step <= 25; step++) {
+        if (!keepRunning) break;
+        write(`[Step ${step}] Analyzing DOM...`, "debug");
+
+        try {
+            let allTabs = await chrome.tabs.query({ currentWindow: true });
+            let tabsListStr = allTabs.map((t, i) => `Tab ${i}${t.active ? " [ACTIVE]" : ""}: ${t.title ? t.title.substring(0, 25) : "Loading"} - ${t.url.substring(0, 45)}...`).join(" | ");
+
+            let [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+            let elements = [];
+
+            // 🚀 V7.57: Persist Banned Elements ONLY for the exact active URL
+            if (tab.url && tab.url !== currentContextUrl && !tab.url.startsWith("chrome://")) {
+                bannedElements.clear();
+                currentContextUrl = tab.url;
+            }
+
+            // 🛡️ V7.57: Detect restricted browser pages where scripting is blocked
+            const isRestrictedPage = /^(chrome|edge|vivaldi|brave|opera|about|chrome-extension):\/\//.test(tab.url || "");
+
+            if (isRestrictedPage) {
+                write(`[!] Internal browser page detected. Skipping DOM scan.`, "debug");
+                elements = [{ index: 0, tag: "INFO", text: "[BROWSER INTERNAL PAGE - No DOM available. Use 'navigate' or 'new_tab' to go to a website URL.]", href: "" }];
+            } else {
+                try {
+                    const scanResults = await chrome.scripting.executeScript({ target: { tabId: tab.id }, func: DOMScanner, args: [showBoxes] });
+                    if (scanResults && scanResults[0] && scanResults[0].result) {
+                        elements = scanResults[0].result;
+                    } else {
+                        elements = [];
+                    }
+                } catch (scanErr) {
+                    if (scanErr.message.includes("frame with id 0") || scanErr.message.includes("Cannot access contents")) {
+                        write("[!] Website crashed or timed out. Injecting recovery sequence...", "error");
+                        elements = [{ index: 0, tag: "ERROR", text: "[PAGE FAILED TO LOAD. SERVER DEAD. NAVIGATE AWAY IMMEDIATELY.]", href: "" }];
+                        actionHistory.push("[CRITICAL ERROR]: The last URL you navigated to is broken. You MUST abandon this site and 'navigate' somewhere else.");
+                    } else {
+                        // 🛡️ Catch-all: Don't kill the loop on unexpected scan errors
+                        write(`[!] DOM scan failed: ${scanErr.message}. Continuing with no elements.`, "debug");
+                        elements = [{ index: 0, tag: "INFO", text: "[DOM SCAN FAILED - Use 'navigate' or 'new_tab' to go to a website URL.]", href: "" }];
+                    }
+                }
+
+                // 💥 V7.57: 404 PAGE DEATH DETECTOR 💥
+                if (elements && elements.length > 0) {
+                    const pageText = elements.map(e => (e.text || "").toLowerCase()).join(" ");
+                    if ((pageText.includes("404") || pageText.includes("page format is invalid")) && (pageText.includes("not found") || pageText.includes("couldn't find") || pageText.includes("does not exist") || pageText.includes("sorry"))) {
+                        if (actionHistory.length > 0 && !actionHistory[actionHistory.length - 1].includes("404 ERROR")) {
+                            write(`[!] 404 Dead Page Detected. Forcing LLM to retreat...`, "error");
+                            actionHistory.push(`[SYSTEM FATAL BLOCK]: YOU ARE ON A 404 ERROR PAGE. THE LINK IS DEAD AND HAS NO RELEVANT CONTENT. YOU MUST USE 'navigate' OR 'new_tab' TO GO BACK TO A SEARCH ENGINE IMMEDIATELY! DO NOT EXTRACT OR SCROLL.`);
+                        }
+                    }
+                }
+
+                // 💥 V7.57: BANNED ELEMENTS FILTER 💥
+                if (bannedElements.size > 0 && elements) {
+                    const originalLength = elements.length;
+                    elements = elements.filter(e => !bannedElements.has(e.index));
+                    if (elements.length < originalLength) {
+                        write(`[!] Filtered ${originalLength - elements.length} banned elements from LLM vision.`, "debug");
+                    }
+                }
+            }
+
+            // 🔥 V7.57: Dual-Brain Routing — Planner for Step 1, Navigator for execution
+            const activeModel = (step === 1) ? selectedPlanner : selectedNavigator;
+            const activeRole = (step === 1) ? "PLANNER" : "NAVIGATOR";
+            write(`${activeRole} -> ${activeModel}`, "debug");
+
+            const plan = await callLLM(goal, elements, apiKey, activeModel, actionHistory, agentMemory, tab.url, selectedTemp, selectedProvider, baseUrl, tabsListStr);
+            write(plan.reasoning, "ai");
+
+            async function wrapUpTask() {
+                write(`[DONE] Agent confirms task is complete: ${plan.value || ""}`, "debug");
+                if (agentMemory.length > 0) {
+                    agentMemory.forEach(m => write(m, "result-card"));
+
+                    if (isPlanningTask) {
+                        // 🧠 V7.57: AUTO-SHEETS FOR PLANNING TASKS 🧠
+                        write(`[SHEETS] Planning task detected! Auto-saving ${agentMemory.length} items to Google Sheets...`, "debug");
+                        try {
+                            // Open a new Google Sheet
+                            const sheetsTab = await chrome.tabs.create({ url: "https://sheets.new", active: true });
+                            write(`[SHEETS] Opened new spreadsheet. Waiting for load...`, "debug");
+                            await new Promise(r => setTimeout(r, 6000)); // Wait for Sheets to fully load
+
+                            // Build the memory dump as tab-separated rows
+                            const memoryDump = agentMemory.map(m => m.replace('[SAVE] ', '')).join('\n\n');
+
+                            // Inject the data into the sheet using clipboard simulation
+                            await chrome.scripting.executeScript({
+                                target: { tabId: sheetsTab.id },
+                                world: "MAIN",
+                                func: async (data) => {
+                                    return new Promise(async (resolve) => {
+                                        try {
+                                            // Click center of sheet to find active cell
+                                            let targetX = window.innerWidth / 2;
+                                            let targetY = window.innerHeight / 2;
+                                            const activeCell = document.querySelector('.cell-input, [data-type="cell"], .editable-cell, #cell-editor, .waffle-content-area');
+                                            if (activeCell) {
+                                                const r = activeCell.getBoundingClientRect();
+                                                targetX = r.left + r.width / 2;
+                                                targetY = r.top + r.height / 2;
+                                            }
+
+                                            // Focus click
+                                            ['mousedown', 'mouseup', 'click'].forEach(type => {
+                                                document.elementFromPoint(targetX, targetY)?.dispatchEvent(
+                                                    new MouseEvent(type, { clientX: targetX, clientY: targetY, bubbles: true, cancelable: true })
+                                                );
+                                            });
+                                            await new Promise(r => setTimeout(r, 500));
+
+                                            // Clipboard paste
+                                            const blob = new Blob([data], { type: 'text/plain' });
+                                            const clipboardItem = new ClipboardItem({ 'text/plain': blob });
+                                            await navigator.clipboard.write([clipboardItem]);
+                                            document.execCommand('paste');
+                                            resolve({ success: true });
+                                        } catch(e) {
+                                            resolve({ success: false, error: e.message });
+                                        }
+                                    });
+                                },
+                                args: [memoryDump]
+                            });
+                            write(`[SHEETS] ✅ All ${agentMemory.length} items saved to Google Sheets!`, "debug");
+                        } catch(e) {
+                            write(`[SHEETS] Auto-save failed: ${e.message}. Data is still in memory.`, "error");
+                        }
+                    } else {
+                        // Quick extraction task — send to WhatsApp API
+                        try {
+                            const waRes = await fetch("http://localhost:3000/api/whatsapp-send", {
+                                method: "POST",
+                                headers: { "Content-Type": "application/json; charset=utf-8" },
+                                body: JSON.stringify({
+                                    message: `*NanoAgent Extraction*\n\n${agentMemory.map(m => m.replace('[SAVE] ', '- ')).join('\n')}\n\n_Task: ${goal}_`
+                                })
+                            });
+                            const waData = await waRes.json();
+                            if (waData.sent) write("[WHATSAPP] Extraction sent!", "debug");
+                            else if (waData.error) write(`[WHATSAPP] Error: ${waData.error}`, "debug");
+                        } catch (e) {
+                            write("[WHATSAPP] Delivery skipped.", "debug");
+                        }
+                    }
+                }
+            }
+
+            const isClosingAction = plan.action === "finish" || plan.action === "none" || plan.action === "complete";
+            const deferredBreak = plan.is_goal_met === true && !isClosingAction;
+
+            if (isClosingAction || (plan.is_goal_met === true && !deferredBreak)) {
+                await wrapUpTask();
+                break;
+            }
+
+            let safePlanValue = plan.value;
+            if (typeof safePlanValue === 'object' && safePlanValue !== null) { safePlanValue = JSON.stringify(safePlanValue); }
+            if (plan.action === "inject_data" && safePlanValue === "MEMORY") {
+                safePlanValue = agentMemory.map(m => m.replace('[SAVE] ', '')).join('\n\n');
+                write(`[SYSTEM OVERRIDE] Intercepted 'MEMORY' payload and expanded ${agentMemory.length} saved items for injection!`, "debug");
+            }
+
+            let actionContext = tab.url ? tab.url.split('?')[0].split('#')[0] : tab.id;
+            let targetIdentifier = plan.target_index;
+            if (plan.action === "new_tab" || plan.action === "navigate" || plan.action === "switch_tab") {
+                actionContext = "nav";
+                targetIdentifier = safePlanValue;
+            } else if (plan.action === "extract_info" || plan.action === "extract") {
+                if (typeof plan.target_index !== "number") {
+                    targetIdentifier = safePlanValue;
+                }
+            }
+
+            const currentActionKey = `${plan.action}-${actionContext}-${targetIdentifier}`;
+
+            // 💥 V7.57: BANNED ELEMENT MEMORY SCRUBBING 💥
+            if (typeof plan.target_index === "number" && bannedElements.has(plan.target_index)) {
+                write(`[!] Model hallucinated BANNED index ${plan.target_index}. Scrubbing context...`, "error");
+                // The model saw the banned index in its actionHistory and blindly copied it!
+                // We MUST physically erase the trapped index from its history so it forgets it!
+                actionHistory = actionHistory.filter(msg => !msg.includes(`index ${plan.target_index}`));
+                actionHistory.push(`[SYSTEM UPDATE] You just tried to select index ${plan.target_index}, but it DOES NOT EXIST. Your corrupted memories have been deleted. You MUST read the VISIBLE ELEMENTS list carefully and pick a valid, existing index number!`);
+                await new Promise(r => setTimeout(r, 2000));
+                continue;
+            }
+
+            recentActionKeys.push(currentActionKey);
+            if (recentActionKeys.length > 8) recentActionKeys.shift();
+
+            const occurrences = recentActionKeys.filter(k => k === currentActionKey && plan.action !== "scroll" && plan.action !== "switch_tab").length;
+
+            if (occurrences >= 3) {
+                loopTrapCount++;
+                if (loopTrapCount >= 4) {
+                    write(`[STOP] Hard aborting... Model ignored 3 FATAL BLOCK messages! Shutting down to protect API quota.`, "error");
+                    break;
+                }
+
+                write(`[!] Loop Trap Detected. Forcing reroute...`, "error");
+                let trapMsg = `[SYSTEM FATAL BLOCK]: You are caught in a loop trying to ${plan.action} on index ${plan.target_index || 'N/A'}. THIS IS A TRAP. If you opened a new tab recently, you MUST use 'switch_tab' FIRST! Otherwise, pick a new target entirely.`;
+                if (plan.action === "new_tab") trapMsg = `[SYSTEM FATAL BLOCK]: You are endlessly spawning background tabs! STOP. You MUST use 'switch_tab' (using the Tab Number from AVAILABLE TABS) to move your vision to the tabs you just created before you do anything else!`;
+
+                // 💥 V7.57: BANNED ELEMENT EXECUTION 💥
+                if (typeof plan.target_index === "number") {
+                    bannedElements.add(plan.target_index);
+                    trapMsg = `[SYSTEM FATAL BLOCK]: You are caught in a loop! The system has physically DELETED index ${plan.target_index} from your vision. You CANNOT select it anymore. You MUST pick a new target!`;
+                    write(`[!] Index ${plan.target_index} has been BANNED from LLM vision!`, "error");
+                }
+
+                actionHistory.push(trapMsg);
+                await new Promise(r => setTimeout(r, 3000));
+                continue;
+            } else {
+                loopTrapCount = 0;
+            }
+            lastActionKey = currentActionKey;
+
+            actionHistory.push(`Step ${step}: ${plan.action} ${safePlanValue ? `"${safePlanValue}"` : ""} on index ${plan.target_index || "N/A"}`);
+
+            if (plan.action === "switch_tab" && typeof plan.target_index === "number") {
+                let targetTab = allTabs[plan.target_index];
+                if (targetTab) {
+                    write(`[TAB] Switching to Tab ${plan.target_index}...`, "debug");
+                    await chrome.tabs.update(targetTab.id, { active: true });
+                    await new Promise(r => setTimeout(r, 2000));
+                }
+            }
+            else if (plan.action === "new_tab" || plan.action === "navigate") {
+                let targetUrl = safePlanValue || "";
+
+                // 🚀 V7.57 NEW: Natively open grabbed DOM Elements in New Tabs (Priority over hallucinated text)
+                if (typeof plan.target_index === "number") {
+                    const targetEl = elements.find(e => e.index === plan.target_index);
+                    if (targetEl && targetEl.fullHref && targetEl.fullHref !== "" && !targetEl.fullHref.startsWith("javascript:")) {
+                        targetUrl = targetEl.fullHref;
+                        write(`[NATIVE] Extracted URL from element ${plan.target_index} (${targetUrl.substring(0, 40)}...)`, "debug");
+                    }
+                }
+
+                // Clear LLM hallucinations for empty links
+                if (targetUrl === plan.action || targetUrl === "null" || targetUrl === "undefined") {
+                    targetUrl = "";
+                }
+
+                if (targetUrl.includes("openweather.org") && !targetUrl.includes("openweathermap.org")) {
+                    targetUrl = targetUrl.replace("openweather.org", "openweathermap.org");
+                }
+
+                if (targetUrl.startsWith("javascript:")) {
+                    actionHistory.push(`[SYSTEM BLOCK] Cannot open a javascript: link in a new tab. If this is a button, try using the 'click' action instead!`);
+                    write("[WAIT] Error Cooldown (3s)...", "debug");
+                    await new Promise(r => setTimeout(r, 3000));
+                    continue;
+                }
+
+                if (!targetUrl || targetUrl.trim() === "") {
+                    actionHistory.push(`[SYSTEM BLOCK] Empty or invalid URL provided. You must provide a valid URL in 'value' OR a target_index that contains an href link.`);
+                    write("[WAIT] Error Cooldown (3s)...", "debug");
+                    await new Promise(r => setTimeout(r, 3000));
+                    continue;
+                }
+                if (!targetUrl.startsWith("http") && !targetUrl.startsWith("chrome://")) targetUrl = "https://" + targetUrl;
+
+                if (plan.action === "new_tab") {
+                    write(`Opening Background Tab: ${targetUrl}`, "debug");
+                    // 🚀 V7.57 NEW: Open new tabs in background so the agent doesn't lose its context!
+                    await chrome.tabs.create({ url: targetUrl, active: false });
+                    actionHistory.push(`[SYSTEM UPDATE] Successfully created background tab for ${targetUrl}. IMPORTANT: Your vision is still on the OLD page. You MUST use 'switch_tab' in your next step to see the new page!`);
+                }
+                else {
+                    write(`Navigating to: ${targetUrl}`, "debug");
+                    await chrome.tabs.update(tab.id, { url: targetUrl });
+                    write("[WAIT] Waiting for page to hydrate...", "debug");
+                    await new Promise(r => setTimeout(r, 4000));
+                }
+            }
+            else if (plan.action === "scroll") {
+                write("Scrolling page content...", "debug");
+                await chrome.scripting.executeScript({ target: { tabId: tab.id }, func: () => window.scrollBy({ top: 700, behavior: 'smooth' }) });
+                await new Promise(r => setTimeout(r, 2000));
+            }
+            else if (plan.action === "extract_info" || plan.action === "extract") {
+                let foundText = "";
+
+                if (typeof plan.target_index === "number") {
+                    const el = elements.find(e => e.index === plan.target_index);
+                    if (el && el.text !== "[No Text]") {
+                        // 💥 V7.57: MODAL HALLUCINATION OVERRIDE 💥
+                        if (el.text.includes("[POPUP/MODAL ACTION]")) {
+                            write(`[!] System Override: Intercepted blind extraction on a Popup Modal button. Converting to [CLICK]...`, "error");
+                            actionHistory.push(`[SYSTEM UPDATE] You erroneously tried to EXTRACT text from a popup close button! The system intervened and CLICKED it shut for you. Proceed with your original extraction target now.`);
+                            plan.action = "click";
+
+                            // Immediately execute the click block for the modal button instead
+                            const execResults = await chrome.scripting.executeScript({
+                                target: { tabId: tab.id }, world: "MAIN",
+                                func: async (sel) => {
+                                    return new Promise(resolve => {
+                                        const tEl = document.querySelector(sel);
+                                        if (tEl) tEl.click();
+                                        resolve({ success: true });
+                                    });
+                                }, args: [el.sel || ""]
+                            });
+                            await new Promise(r => setTimeout(r, 2000));
+                            continue; // Skip the rest of the extraction flow since we handled the click
+                        }
+                        foundText = el.text;
+                    }
+                }
+
+                if (!foundText && safePlanValue && safePlanValue.length > 3 && safePlanValue !== "[No Text]" && !safePlanValue.includes("[latest_")) {
+                    foundText = safePlanValue;
+                }
+
+                if (foundText) {
+                    // 🛡️ V7.57: Block duplicate extractions at the CODE level
+                    const isDuplicate = agentMemory.some(m => m.includes(foundText));
+                    if (isDuplicate) {
+                        consecutiveDuplicates++;
+                        write(`[!] Duplicate extraction blocked: [${foundText}]`, "debug");
+                        
+                        // 💥 V7.57: AUTO-SCROLL ON DEADLOCK 💥
+                        if (consecutiveDuplicates >= 2) {
+                            write(`[!] ${consecutiveDuplicates} consecutive duplicates! Auto-scrolling to reveal new content...`, "error");
+                            await chrome.scripting.executeScript({ target: { tabId: tab.id }, func: () => window.scrollBy({ top: 700, behavior: 'smooth' }) });
+                            await new Promise(r => setTimeout(r, 2000));
+                            actionHistory.push(`[SYSTEM UPDATE] You were stuck extracting duplicates, so the system has auto-scrolled the page. New content is now visible below. Look at the VISIBLE ELEMENTS list carefully for NEW items you haven't extracted yet! If all visible items are still duplicates, use 'scroll' again OR 'navigate' to a new Google search.`);
+                            consecutiveDuplicates = 0; // Reset after scroll
+                            continue; // Skip to next iteration to re-scan DOM
+                        } else {
+                            actionHistory.push(`[SYSTEM OVERRIDE] You already have "${foundText}" in SAVED MEMORY. The data you need might be BELOW the visible area — try 'scroll' to reveal more content, or 'click' on a "Show more" button!`);
+                        }
+                    } else {
+                        consecutiveDuplicates = 0; // Reset on successful extraction
+                        write(`Memorized: [${foundText}]`, "ai");
+                        agentMemory.push("[SAVE] " + foundText);
+                        actionHistory.push(`[SYSTEM] Successfully saved "${foundText}". ${agentMemory.length} item(s) in memory. If more items are needed, try scrolling down or navigating to reveal new content!`);
+                    }
+                } else {
+                    write(`[!] Extraction failed. Invalid target or empty value.`, "error");
+                    actionHistory.push(`[SYSTEM BLOCK] Extraction failed. You MUST provide a valid 'value' string. Do not extract '[No Text]'.`);
+                }
+            }
+
+            else if (plan.action === "inject_data") {
+                if (!tab.url.includes("spreadsheets") && !tab.url.includes("excel")) {
+                    write(`[!] Cannot inject_data! Not a spreadsheet page.`, "error");
+                    actionHistory.push(`[SYSTEM FATAL BLOCK] You attempted to use 'inject_data' on a non-spreadsheet page! You MUST use 'navigate' or 'new_tab' to go to 'https://sheets.new' FIRST before you can paste data!`);
+                    await new Promise(r => setTimeout(r, 2000));
+                    continue;
+                }
+
+                write(`Executing [SPREADSHEET INJECTION]...`, "debug");
+                const execResults = await chrome.scripting.executeScript({
+                    target: { tabId: tab.id },
+                    world: "MAIN",
+                    func: async (val) => {
+                        return new Promise(async (resolve) => {
+                            try {
+                                // 1. Identify Target Coordinates (Look for Sheets Active Cell first)
+                                let targetX = window.innerWidth / 2;
+                                let targetY = window.innerHeight / 2;
+
+                                const activeCell = document.querySelector(".autofill-cover") ||
+                                    document.querySelector(".cell-selection") ||
+                                    document.querySelector(".active-cell-border");
+
+                                if (activeCell) {
+                                    const rect = activeCell.getBoundingClientRect();
+                                    targetX = rect.left + rect.width / 2;
+                                    targetY = rect.top + rect.height / 2;
+                                }
+
+                                // --- GHOST MOUSE INJECTION ---
+                                let cursor = document.getElementById("nano-ghost-mouse");
+                                if (!cursor) {
+                                    cursor = document.createElement("div");
+                                    cursor.id = "nano-ghost-mouse";
+                                    const svgNS = "http://www.w3.org/2000/svg";
+                                    const svg = document.createElementNS(svgNS, "svg");
+                                    svg.setAttribute("width", "24"); svg.setAttribute("height", "24");
+                                    svg.setAttribute("viewBox", "0 0 24 24"); svg.setAttribute("fill", "none");
+                                    const path = document.createElementNS(svgNS, "path");
+                                    path.setAttribute("d", "M5.5 3.21V20.8c0 .45.54.67.85.35l4.86-4.86a.5.5 0 01.35-.15h6.87c.45 0 .67-.54.35-.85L6.35 2.86a.5.5 0 00-.85.35z");
+                                    path.setAttribute("fill", "#111"); path.setAttribute("stroke", "#FFF"); path.setAttribute("stroke-width", "1.5");
+                                    svg.appendChild(path); cursor.appendChild(svg);
+                                    cursor.style.position = "fixed"; cursor.style.zIndex = "2147483647"; cursor.style.pointerEvents = "none";
+                                    cursor.style.transition = "transform 0.5s cubic-bezier(0.22, 1, 0.36, 1)";
+                                    cursor.style.transform = `translate(${window.innerWidth}px, ${window.innerHeight}px)`;
+                                    document.body.appendChild(cursor);
+                                    cursor.getBoundingClientRect();
+                                }
+
+                                let aborted = false;
+                                const abortHandler = (e) => {
+                                    if (e.isTrusted && (Math.abs(e.movementX) > 1 || Math.abs(e.movementY) > 1)) {
+                                        aborted = true; cursor.style.display = "none";
+                                        document.removeEventListener("mousemove", abortHandler);
+                                    }
+                                };
+                                document.addEventListener("mousemove", abortHandler);
+                                cursor.style.display = "block";
+                                cursor.style.transform = `translate(${targetX}px, ${targetY}px)`;
+
+                                await new Promise(r => setTimeout(r, 600));
+                                document.removeEventListener("mousemove", abortHandler);
+                                if (aborted) { resolve({ aborted: true }); return; }
+                                // --- END GHOST MOUSE ---
+
+                                // 2. Click the specific coordinate to guarantee canvas focus
+                                let canvas = document.elementFromPoint(targetX, targetY);
+                                let activeTarget = canvas || document.activeElement || document.body;
+
+                                if (canvas) {
+                                    canvas.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, clientX: targetX, clientY: targetY }));
+                                    canvas.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, clientX: targetX, clientY: targetY }));
+                                    await new Promise(r => setTimeout(r, 100)); // give canvas time to wake up
+                                }
+
+                                // 3. Dispatch Enter key to open the cell editor manually on Spreadsheets
+                                activeTarget.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', keyCode: 13, bubbles: true, composed: true }));
+                                await new Promise(r => setTimeout(r, 100));
+
+                                // 4. Construct the mock Clipboard payload
+                                const dataTransfer = new DataTransfer();
+                                dataTransfer.setData('text/plain', val);
+                                const pasteEvent = new ClipboardEvent('paste', {
+                                    clipboardData: dataTransfer,
+                                    bubbles: true,
+                                    cancelable: true,
+                                    composed: true
+                                });
+
+                                // 5. Fire the paste payload
+                                (document.activeElement || activeTarget).dispatchEvent(pasteEvent);
+
+                                // If it's a regular contenteditable or input, also try execCommand as fallback
+                                try { document.execCommand('insertText', false, val); } catch (e) { }
+
+                                await new Promise(r => setTimeout(r, 200));
+
+                                // 6. Dispatch Enter key to commit the cell
+                                (document.activeElement || activeTarget).dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', keyCode: 13, bubbles: true, composed: true }));
+                                document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', keyCode: 13, bubbles: true, composed: true }));
+
+                                resolve({ success: true });
+                            } catch (err) {
+                                console.error('[NanoAgent] inject_data crashed:', err);
+                                resolve({ error: err.message || 'Unknown injection error' });
+                            }
+                        });
+                    },
+                    args: [safePlanValue || ""]
+                });
+
+                if (execResults && execResults[0] && execResults[0].result && execResults[0].result.aborted) {
+                    write(`[!] Agent interrupted by human mouse movement!`, "error");
+                    actionHistory.push(`[SYSTEM OVERRIDE] The human user moved the physical mouse and aborted your action! Pick a new target or change your plan.`);
+                    await new Promise(r => setTimeout(r, 2000));
+                    continue;
+                }
+
+                if (execResults && execResults[0] && execResults[0].result && execResults[0].result.error) {
+                    write(`[!] Injection error: ${execResults[0].result.error}. Retrying...`, "error");
+                    actionHistory.push(`[SYSTEM FATAL BLOCK] Spreadsheet injection FAILED: ${execResults[0].result.error}. You MUST try 'inject_data' again. The task is NOT complete!`);
+                    await new Promise(r => setTimeout(r, 2000));
+                    continue;
+                }
+
+                await new Promise(r => setTimeout(r, 3000));
+
+                // Instruct small models to stop looping after spreadsheet injection
+                actionHistory.push(`[SYSTEM SUCCESS] You successfully performed [SPREADSHEET INJECTION]! Google Sheets hides text from the DOM scanner, so you will NOT see your pasted text. TRUST THAT IT WORKED. DO NOT REPEAT THE INJECTION. If your task is complete, output action: "finish" NOW.`);
+            }
+
+            else if (typeof plan.target_index === "number") {
+                // 🛡️ V1.2 SHEETS GUARD: Auto-reroute type/click to inject_data on spreadsheet pages
+                if ((plan.action === "type" || plan.action === "click") && tab.url && (tab.url.includes("spreadsheets") || tab.url.includes("sheets.new"))) {
+                    if (plan.action === "type" && safePlanValue) {
+                        write(`[!] Rerouting [TYPE] → [SPREADSHEET INJECTION] (Sheets detected)`, "debug");
+                        plan.action = "inject_data";
+                        // Re-enter the inject_data block on next iteration with correct action
+                        const execResults = await chrome.scripting.executeScript({
+                            target: { tabId: tab.id },
+                            world: "MAIN",
+                            func: async (val) => {
+                                return new Promise(async (resolve) => {
+                                    try {
+                                        let targetX = window.innerWidth / 2;
+                                        let targetY = window.innerHeight / 2;
+                                        const activeCell = document.querySelector(".autofill-cover") ||
+                                            document.querySelector(".cell-selection") ||
+                                            document.querySelector(".active-cell-border");
+                                        if (activeCell) {
+                                            const rect = activeCell.getBoundingClientRect();
+                                            targetX = rect.left + rect.width / 2;
+                                            targetY = rect.top + rect.height / 2;
+                                        }
+                                        let canvas = document.elementFromPoint(targetX, targetY);
+                                        let activeTarget = canvas || document.activeElement || document.body;
+                                        if (canvas) {
+                                            canvas.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, clientX: targetX, clientY: targetY }));
+                                            canvas.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, clientX: targetX, clientY: targetY }));
+                                            await new Promise(r => setTimeout(r, 100));
+                                        }
+                                        activeTarget.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', keyCode: 13, bubbles: true, composed: true }));
+                                        await new Promise(r => setTimeout(r, 100));
+                                        const dataTransfer = new DataTransfer();
+                                        dataTransfer.setData('text/plain', val);
+                                        const pasteEvent = new ClipboardEvent('paste', {
+                                            clipboardData: dataTransfer, bubbles: true, cancelable: true, composed: true
+                                        });
+                                        (document.activeElement || activeTarget).dispatchEvent(pasteEvent);
+                                        try { document.execCommand('insertText', false, val); } catch (e) { }
+                                        await new Promise(r => setTimeout(r, 200));
+                                        (document.activeElement || activeTarget).dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', keyCode: 13, bubbles: true, composed: true }));
+                                        resolve({ success: true });
+                                    } catch (err) {
+                                        console.error('[NanoAgent] rerouted inject_data crashed:', err);
+                                        resolve({ error: err.message || 'Unknown rerouted injection error' });
+                                    }
+                                });
+                            },
+                            args: [safePlanValue]
+                        });
+                        await new Promise(r => setTimeout(r, 3000));
+                        actionHistory.push(`[SYSTEM SUCCESS] Rerouted TYPE → SPREADSHEET INJECTION and pasted "${safePlanValue}". If your task is complete, output action: "finish" NOW.`);
+                        write("[WAIT] API Cooldown (3s)...", "debug");
+                        await new Promise(r => setTimeout(r, 3000));
+                        if (deferredBreak) { await wrapUpTask(); break; }
+                        continue;
+                    }
+                }
+
+                const target = elements.find(e => e.index === plan.target_index);
+                if (target) {
+                    if (target.tag === "INFO" || target.tag === "ERROR") {
+                        actionHistory.push(`[SYSTEM BLOCK] You CANNOT interact (click/type) with a system message! You must use 'navigate' to visit a real URL first.`);
+                        write(`[!] Attempted to interact with system message. Blocked.`, "error");
+                        await new Promise(r => setTimeout(r, 3000));
+                        continue;
+                    }
+                    write(`Executing [${plan.action.toUpperCase()}] on [${target.text.substring(0, 20)}]`, "debug");
+
+                    const execResults = await chrome.scripting.executeScript({
+                        target: { tabId: tab.id },
+                        world: "MAIN",
+                        func: async (sel, action, value, elementHref) => {
+                            return new Promise(async (resolve) => {
+                                try {
+                                    const el = document.querySelector(sel);
+                                    if (!el) {
+                                        console.error("[NanoAgent] Element not found for selector:", sel);
+                                        resolve({ error: "Element not found" }); return;
+                                    }
+                                    let tEl = el.closest('button, a, [role="button"], input, [contenteditable="true"]') || el;
+                                    tEl.scrollIntoView({ block: 'center', behavior: 'smooth' });
+
+                                    await new Promise(r => setTimeout(r, 400));
+                                    const rect = tEl.getBoundingClientRect();
+                                    const centerX = rect.left + rect.width / 2;
+                                    const centerY = rect.top + rect.height / 2;
+
+                                    let cursor = document.getElementById("nano-ghost-mouse");
+                                    if (!cursor) {
+                                        cursor = document.createElement("div");
+                                        cursor.id = "nano-ghost-mouse";
+                                        const svgNS = "http://www.w3.org/2000/svg";
+                                        const svg = document.createElementNS(svgNS, "svg");
+                                        svg.setAttribute("width", "24"); svg.setAttribute("height", "24");
+                                        svg.setAttribute("viewBox", "0 0 24 24"); svg.setAttribute("fill", "none");
+                                        const path = document.createElementNS(svgNS, "path");
+                                        path.setAttribute("d", "M5.5 3.21V20.8c0 .45.54.67.85.35l4.86-4.86a.5.5 0 01.35-.15h6.87c.45 0 .67-.54.35-.85L6.35 2.86a.5.5 0 00-.85.35z");
+                                        path.setAttribute("fill", "#111"); path.setAttribute("stroke", "#FFF"); path.setAttribute("stroke-width", "1.5");
+                                        svg.appendChild(path); cursor.appendChild(svg);
+                                        cursor.style.position = "fixed"; cursor.style.zIndex = "2147483647"; cursor.style.pointerEvents = "none";
+                                        cursor.style.transition = "transform 0.5s cubic-bezier(0.22, 1, 0.36, 1)";
+                                        cursor.style.transform = `translate(${window.innerWidth}px, ${window.innerHeight}px)`;
+                                        document.body.appendChild(cursor);
+                                        cursor.getBoundingClientRect();
+                                    }
+
+                                    let aborted = false;
+                                    const abortHandler = (e) => {
+                                        if (e.isTrusted && (Math.abs(e.movementX) > 1 || Math.abs(e.movementY) > 1)) {
+                                            aborted = true; cursor.style.display = "none";
+                                            document.removeEventListener("mousemove", abortHandler);
+                                        }
+                                    };
+                                    document.addEventListener("mousemove", abortHandler);
+                                    cursor.style.display = "block";
+                                    cursor.style.transform = `translate(${centerX}px, ${centerY}px)`;
+
+                                    await new Promise(r => setTimeout(r, 600));
+                                    document.removeEventListener("mousemove", abortHandler);
+
+                                    if (aborted) { resolve({ aborted: true }); return; }
+
+                                    tEl.focus();
+
+                                    if (action === "type") {
+                                        const delay = (ms) => new Promise(r => setTimeout(r, ms));
+                                        let nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value")?.set;
+                                        let nativeTextAreaValueSetter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, "value")?.set;
+
+                                        if (tEl.isContentEditable) {
+                                            tEl.focus();
+                                            document.execCommand('selectAll', false, null);
+                                            document.execCommand('delete', false, null);
+                                            for (let i = 0; i < value.length; i++) {
+                                                document.execCommand('insertText', false, value[i]);
+                                                await delay(30);
+                                            }
+                                        } else {
+                                            const setter = tEl.tagName === 'TEXTAREA' ? nativeTextAreaValueSetter : nativeInputValueSetter;
+                                            // Clear field first
+                                            if (setter) { setter.call(tEl, ''); } else { tEl.value = ''; }
+                                            tEl.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
+
+                                            // Type character by character
+                                            for (let i = 0; i < value.length; i++) {
+                                                const partial = value.substring(0, i + 1);
+                                                if (setter) { setter.call(tEl, partial); } else { tEl.value = partial; }
+                                                tEl.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
+                                                await delay(30);
+                                            }
+                                        }
+
+                                        tEl.dispatchEvent(new Event('change', { bubbles: true, composed: true }));
+
+                                        // 💥 V7.57: AUTO-SUBMIT ENTER KEYPRESS 💥
+                                        // Most forms (like search bars) need Enter to be pressed to actually submit the query.
+                                        const enterEventInit = { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true, composed: true, cancelable: true };
+                                        tEl.dispatchEvent(new KeyboardEvent('keydown', enterEventInit));
+                                        tEl.dispatchEvent(new KeyboardEvent('keypress', enterEventInit));
+                                        tEl.dispatchEvent(new KeyboardEvent('keyup', enterEventInit));
+
+                                        // Also try dispatching a generic submit event if it's in a form
+                                        const parentForm = tEl.closest('form');
+                                        if (parentForm) {
+                                            try { parentForm.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })); } catch (e) { }
+                                        }
+
+                                        resolve({ success: true });
+                                    } else {
+                                        const originalOpen = window.open;
+                                        window.open = function (url) { window.location.href = url; return window; };
+                                        const evtOpts = { bubbles: true, composed: true, cancelable: true, view: window };
+                                        tEl.dispatchEvent(new PointerEvent('pointerover', evtOpts));
+                                        tEl.dispatchEvent(new PointerEvent('pointerenter', evtOpts));
+                                        tEl.dispatchEvent(new PointerEvent('pointerdown', Object.assign({ buttons: 1 }, evtOpts)));
+                                        tEl.dispatchEvent(new PointerEvent('pointerup', evtOpts));
+                                        tEl.dispatchEvent(new MouseEvent('mousedown', Object.assign({ buttons: 1 }, evtOpts)));
+                                        tEl.dispatchEvent(new MouseEvent('mouseup', evtOpts));
+
+                                        const originalUrl = window.location.href.split('#')[0];
+                                        // Aggressive Click: Click both the exact element and its actionable parent
+                                        el.click();
+                                        if (tEl !== el) tEl.click();
+
+                                        // SPA Fallback (e.g. YouTube): Ensure we hit the main anchor if nested
+                                        const anchor = el.closest('a#thumbnail') || el.closest('a.yt-simple-endpoint') || el.closest('a');
+                                        if (anchor && anchor !== el && anchor !== tEl) {
+                                            anchor.click();
+                                        }
+                                        setTimeout(() => { window.open = originalOpen; }, 1000);
+
+                                        // Ironclad SPA Navigation Fallback: Compare exact URL. If a click fails to transition the SPA, force a hard redirect.
+                                        const fallbackHref = elementHref || (tEl.tagName === 'A' ? tEl.href : null);
+                                        if (fallbackHref) {
+                                            setTimeout(() => {
+                                                const newUrl = window.location.href.split('#')[0];
+                                                if (originalUrl === newUrl) {
+                                                    // Click failed to navigate SPA, pulling the rip cord
+                                                    console.warn('[NanoAgent] Apparent SPA click failure detected. Forcing hard navigation to:', fallbackHref);
+                                                    window.location.href = fallbackHref;
+                                                }
+                                            }, 800);
+                                        }
+                                        resolve({ success: true });
+                                    }
+                                } catch (err) {
+                                    console.error('[NanoAgent] click/type handler crashed:', err);
+                                    resolve({ error: err.message || 'Unknown action error' });
+                                }
+                            });
+                        },
+                        args: [target.sel || "", plan.action || "", safePlanValue || "", target.fullHref || ""]
+                    });
+
+                    if (execResults && execResults[0] && execResults[0].result && execResults[0].result.aborted) {
+                        write(`[!] Agent interrupted by human mouse movement!`, "error");
+                        actionHistory.push(`[SYSTEM OVERRIDE] The human user moved the physical mouse and aborted your action! Pick a new target or change your plan.`);
+                        await new Promise(r => setTimeout(r, 2000));
+                        continue;
+                    }
+
+                    if (execResults && execResults[0] && execResults[0].result && execResults[0].result.error) {
+                        write(`[!] Target element not found in DOM. Retrying...`, "error");
+                        actionHistory.push(`[SYSTEM BLOCK] Could not find the element you targeted. The DOM may have changed. Re-analyze and pick a new target.`);
+                    }
+
+                    await new Promise(r => setTimeout(r, 3000));
+                }
+            }
+
+            write("[WAIT] API Cooldown (3s)...", "debug");
+            await new Promise(r => setTimeout(r, 3000));
+
+            // Deferred finalization: The LLM declared the task complete but we had to execute its final action first!
+            if (deferredBreak) {
+                await wrapUpTask();
+                break;
+            }
+
+        } catch (err) {
+            // 💥 V7.57: EXPLICIT ERROR ROUTING 💥
+            write(`System Error: ${err.message}`, "error");
+            if (err.message.includes("QUOTA_EXCEEDED") || err.message.includes("429")) {
+                write("[WAIT] API Quota hit. Pausing for 10s...", "error");
+                for (let w = 0; w < 10; w++) {
+                    if (!keepRunning) break;
+                    await new Promise(r => setTimeout(r, 1000));
+                }
+                if (keepRunning) { step--; continue; } else { break; }
+            } else { break; }
+        }
+    }
+    keepRunning = false;
+    stopBtn.style.display = "none"; runBtn.style.display = "block"; write("Agent Disengaged.", "debug");
+    clearOverlays();
+};
+
+stopBtn.onclick = () => {
+    keepRunning = false;
+    write("[STOP] Aborting Mission. Shutting down loops...", "error");
+    clearOverlays();
+};
+
+// 📱 V7.57: WhatsApp Remote Control Poller
+setInterval(async () => {
+    if (keepRunning) return; // Do not interrupt an active agent
+
+    try {
+        const res = await fetch("http://localhost:3000/api/whatsapp-poll");
+        const data = await res.json();
+
+        if (data && data.task) {
+            write(`[WHATSAPP] Remote task received!`, "debug");
+            // Populate the prompt box
+            document.getElementById("prompt").value = data.task;
+            // Auto-trigger the execution
+            runBtn.click();
+        }
+    } catch (e) {
+        // Silently ignore HTTP errors if backend is offline
+    }
+}, 3000);
+
+// 🤖 V7.57: API Task Poller — for VS Code Copilot / Open WebUI integration
+setInterval(async () => {
+    if (keepRunning) return; // Do not interrupt active manual tasks
+
+    try {
+        const res = await fetch("http://localhost:3000/api/task-poll");
+        const data = await res.json();
+
+        if (data && data.task) {
+            write(`[API TASK] Remote task received from VS Code!`, "debug");
+            document.getElementById("prompt").value = data.task;
+            runBtn.click(); // Auto-execute
+            
+            // Monitor completion and send result back
+            const checkCompletion = setInterval(async () => {
+                if (!keepRunning) {
+                    // Task finished, extract result from agentMemory
+                    const result = agentMemory.length > 0 
+                        ? agentMemory.map(m => m.replace('[SAVE] ', '')).join('\n')
+                        : "Task completed with no extracted data.";
+                    
+                    await fetch("http://localhost:3000/api/task/complete", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ result })
+                    });
+                    
+                    write(`[API TASK] Result sent back to VS Code.`, "debug");
+                    clearInterval(checkCompletion);
+                }
+            }, 2000);
+        }
+    } catch (e) {
+        // Silently ignore if backend is offline
+    }
+}, 3000);
