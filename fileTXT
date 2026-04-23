@@ -1,0 +1,23 @@
+lsof -ti:3000 | xargs kill -9
+
+lsof -ti:3001 | xargs kill -9
+
+
+
+
+
+
+
+
+Designed and developed the core NanoAgent Chrome Extension with a dual-brain LLM architecture (Planner + Navigator) for autonomous browser navigation, built the DOM Vision Engine for real-time interactive element indexing, implemented the NanoBridge Express server with WhatsApp remote control integration, and engineered the API task endpoints enabling programmatic browser automation from VS Code Copilot Agent Mode.
+
+
+
+Designed and developed the core NanoAgent Chrome Extension with a dual-brain LLM architecture (Planner + Navigator) for autonomous browser navigation.
+Built the DOM Vision Engine for real-time scanning and indexing of interactive page elements.
+Implemented the NanoBridge Express server with WhatsApp Web.js integration for remote control.
+Engineered the API task endpoints enabling programmatic browser automation from VS Code Copilot Agent Mode.
+
+
+
+generate a html file that showcase the features that are present in the extension and the entire project
