@@ -1,76 +1,112 @@
 # NanoAgent Browser Integration
 
-When you need to interact with a website, test a webpage, or extract browser data, use the NanoAgent API:
+## RULES — USE NANOAGENT WHENEVER BROWSER INTERACTION IS NEEDED
 
-## API Endpoint
-- **Base URL**: `http://localhost:3000`
-- **Task Submission**: `POST /api/task`
-- **Result Polling**: `GET /api/task/result`
+1. **If the user asks to "verify", "test", "check", or "open" anything in a browser** → you MUST use the NanoAgent API. Do NOT guess or simulate.
+2. **If you build any web page, HTML file, or web app** → you MUST immediately follow up by sending it to NanoAgent for browser verification.
+3. **Never claim a web page works without actually testing it in a browser via NanoAgent.**
 
-## Usage
+## How to Use NanoAgent
 
-### Submit a browser task:
+Submit a task via curl in the terminal:
+
 ```bash
-curl -X POST http://localhost:3000/api/task \
+curl -s -X POST http://localhost:3000/api/task \
   -H "Content-Type: application/json" \
-  -d '{"task": "Find the current price of Bitcoin on CoinMarketCap"}'
+  -d '{"task": "Your browser task description here"}'
 ```
 
-### Poll for result:
+Poll for the result:
+
 ```bash
-curl http://localhost:3000/api/task/result
+curl -s http://localhost:3000/api/task/result
 ```
 
-### Response format:
-- `{ "status": "queued" }` — Task sent to NanoAgent
-- `{ "status": "processing" }` — NanoAgent is working on it
-- `{ "status": "complete", "result": "..." }` — Task completed with result
+**Keep polling until `status` is `"complete"`.** Do not stop at `"queued"` or `"processing"`.
 
-## When to Use NanoAgent
+## AUTOMATIC BROWSER VERIFICATION
 
-Use NanoAgent when you need to:
-- Visit a website and extract information
-- Test a web page you just built
-- Fill forms or click buttons on a live site
-- Scrape data from web pages
-- Verify that a deployed application works
-- Navigate through multi-step web workflows
-- Interact with web applications that require JavaScript
+**After creating ANY web page or web application, immediately submit a verification task to NanoAgent.**
+
+Use this exact pattern:
+
+```bash
+curl -s -X POST http://localhost:3000/api/task \
+  -H "Content-Type: application/json" \
+  -d '{"task": "Navigate to <URL> and verify the page loads correctly. Describe what you see, what elements are present, and whether anything looks broken."}'
+```
+
+Then poll until complete:
+
+```bash
+curl -s http://localhost:3000/api/task/result
+```
+
+## API Endpoint Summary
+
+| Endpoint | Method | Purpose |
+|----------|--------|---------|
+| `http://localhost:3000/api/task` | POST | Submit a browser task |
+| `http://localhost:3000/api/task/result` | GET | Poll for task result |
+
+### Response States
+- `{ "status": "queued" }` — Task received, not yet started
+- `{ "status": "processing" }` — NanoAgent is actively working
+- `{ "status": "complete", "result": "..." }` — Done, use the result
+
+## Concrete Examples — Copy and Adapt
+
+### Verify a web page you just built:
+```bash
+curl -s -X POST http://localhost:3000/api/task \
+  -H "Content-Type: application/json" \
+  -d '{"task": "Navigate to http://localhost:8080 and verify the page loads correctly. Describe what you see."}'
+```
+
+### Check a deployed site:
+```bash
+curl -s -X POST http://localhost:3000/api/task \
+  -H "Content-Type: application/json" \
+  -d '{"task": "Go to https://example.com and extract the main heading text"}'
+```
+
+### Test form functionality:
+```bash
+curl -s -X POST http://localhost:3000/api/task \
+  -H "Content-Type: application/json" \
+  -d '{"task": "Navigate to http://localhost:3000/login, fill the username with \"test\" and password with \"test123\", click submit, and report what happens"}'
+```
+
+### Extract data from a site:
+```bash
+curl -s -X POST http://localhost:3000/api/task \
+  -H "Content-Type: application/json" \
+  -d '{"task": "Find the current price of Bitcoin on https://coinmarketcap.com and return only the price"}'
+```
+
+### Verify a multi-step flow:
+```bash
+curl -s -X POST http://localhost:3000/api/task \
+  -H "Content-Type: application/json" \
+  -d '{"task": "Navigate to http://localhost:8080/checkout, fill the shipping form, click continue, and report if the payment page appears"}'
+```
 
 ## Workflow Example
 
-1. User asks: "Build a weather app that shows current temperature"
-2. Copilot builds the app code
-3. Copilot uses NanoAgent to test the deployed app:
-   - Task: "Open http://localhost:8080 and extract the temperature displayed"
-4. Copilot receives the result and confirms the app works
-5. Copilot reports completion to user
-
-## Advanced Usage: Waiting for Task Completion
-
-When submitting a task, you should poll the result endpoint until completion:
-
-```bash
-# Submit task
-curl -X POST http://localhost:3000/api/task \
-  -H "Content-Type: application/json" \
-  -d '{"task": "Go to example.com and extract the heading"}'
-
-# Poll until complete (repeat every 2-3 seconds)
-curl http://localhost:3000/api/task/result
-
-# Once status is "complete", use the result in your response
-```
-
-## Error Handling
-
-- If the NanoBridge server is not running, the API call will fail with connection refused
-- Always check the response status before proceeding
-- If a task fails, NanoAgent will return an error message in the result field
+1. User asks: "Build a weather app"
+2. You write the code
+3. **You MUST start a local server and immediately run:**
+   ```bash
+   curl -s -X POST http://localhost:3000/api/task \
+     -H "Content-Type: application/json" \
+     -d '{"task": "Navigate to http://localhost:8080 and verify the weather app loads. Describe the UI and whether the temperature is displayed."}'
+   ```
+4. You poll `curl -s http://localhost:3000/api/task/result` until `"complete"`
+5. You report the actual browser result to the user
 
 ## Best Practices
 
-1. **Be specific in task descriptions**: "Find the price of Bitcoin on CoinMarketCap" is better than "Check Bitcoin price"
-2. **Include URLs when possible**: "Go to https://example.com and extract the main heading"
-3. **Specify extraction format**: "Extract all product prices in a list format"
-4. **Test incrementally**: For complex workflows, break them into smaller tasks
+- **Be specific in task descriptions.** Include exact URLs.
+- **Never skip verification.** If you built it, you must test it in the browser.
+- **Poll until complete.** A result with `"processing"` is not a final answer.
+- If the server is not running (`connection refused`), inform the user that NanoBridge needs to be started.

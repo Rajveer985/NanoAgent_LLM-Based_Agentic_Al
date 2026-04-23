@@ -1,0 +1,26 @@
+{
+  "name": "nano-copilot-bridge",
+  "displayName": "NanoAgent Copilot Bridge",
+  "description": "Automatically forwards prompts from NanoAgent Demo UI to GitHub Copilot Agent Mode",
+  "version": "1.0.0",
+  "publisher": "nanoagent",
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": ["Other"],
+  "activationEvents": ["onStartupFinished"],
+  "main": "./extension.js",
+  "extensionDependencies": ["GitHub.copilot-chat"],
+  "contributes": {
+    "commands": [
+      {
+        "command": "nanoCopilotBridge.enable",
+        "title": "NanoAgent Bridge: Enable"
+      },
+      {
+        "command": "nanoCopilotBridge.disable",
+        "title": "NanoAgent Bridge: Disable"
+      }
+    ]
+  }
+}
