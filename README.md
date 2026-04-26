@@ -9,6 +9,7 @@
 </p>
 
 <p align="center">
+  <a href="https://nanoagent.vercel.app/"><img src="https://img.shields.io/badge/🌐_Live_Demo-nanoagent.vercel.app-00C7B7?style=flat-square&logo=vercel&logoColor=white" alt="Live Demo"></a>
   <img src="https://img.shields.io/badge/Manifest-V3-blue?style=flat-square&logo=googlechrome&logoColor=white" alt="Manifest V3">
   <img src="https://img.shields.io/badge/Release-v1.1-brightgreen?style=flat-square" alt="Release">
   <img src="https://img.shields.io/badge/License-Custom%20(Non--Commercial)-yellow?style=flat-square" alt="License">
@@ -17,6 +18,7 @@
 </p>
 
 <p align="center">
+  <a href="https://nanoagent.vercel.app/"><strong>🌐 Visit Website</strong></a> · 
   <a href="#-features">Features</a> · 
   <a href="#-quick-start">Quick Start</a> · 
   <a href="#-screenshots">Screenshots</a> ·
@@ -25,6 +27,14 @@
   <a href="#-supported-providers">Providers</a> ·
   <a href="#-contributing">Contributing</a>
 </p>
+
+---
+
+## 🌐 Website
+
+**👉 [nanoagent.vercel.app](https://nanoagent.vercel.app/)**
+
+Visit the official NanoAgent website to learn more, see live demos, and get started.
 
 ---
 
