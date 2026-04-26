@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <a href="https://nanoagent.vercel.app/"><img src="https://img.shields.io/badge/🌐_Live_Demo-nanoagent.vercel.app-00C7B7?style=flat-square&logo=vercel&logoColor=white" alt="Live Demo"></a>
+  <a href="https://nanoagent.vercel.app/"><img src="https://img.shields.io/badge/Live_Demo-nanoagent.vercel.app-00C7B7?style=flat-square&logo=vercel&logoColor=white" alt="Live Demo"></a>
   <img src="https://img.shields.io/badge/Manifest-V3-blue?style=flat-square&logo=googlechrome&logoColor=white" alt="Manifest V3">
   <img src="https://img.shields.io/badge/Release-v1.1-brightgreen?style=flat-square" alt="Release">
   <img src="https://img.shields.io/badge/License-Custom%20(Non--Commercial)-yellow?style=flat-square" alt="License">
@@ -18,11 +18,11 @@
 </p>
 
 <p align="center">
-  <a href="https://nanoagent.vercel.app/"><strong>🌐 Visit Website</strong></a> · 
+  <a href="https://nanoagent.vercel.app/"><strong><img src="https://fonts.gstatic.com/s/i/short-term/release/materialsymbolsrounded/language/default/20px.svg" width="14"> Visit Website</strong></a> · 
   <a href="#-features">Features</a> · 
   <a href="#-quick-start">Quick Start</a> · 
   <a href="#-screenshots">Screenshots</a> ·
-  <a href="#%EF%B8%8F-architecture">Architecture</a> ·
+  <a href="#-architecture">Architecture</a> ·
   <a href="#-whatsapp-remote-control">WhatsApp Remote</a> ·
   <a href="#-supported-providers">Providers</a> ·
   <a href="#-contributing">Contributing</a>
@@ -30,9 +30,9 @@
 
 ---
 
-## 🌐 Website
+## <img src="https://fonts.gstatic.com/s/i/short-term/release/materialsymbolsrounded/language/default/20px.svg" width="20"> Website
 
-**👉 [nanoagent.vercel.app](https://nanoagent.vercel.app/)**
+**<img src="https://fonts.gstatic.com/s/i/short-term/release/materialsymbolsrounded/arrow_forward/default/20px.svg" width="14"> [nanoagent.vercel.app](https://nanoagent.vercel.app/)**
 
 Visit the official NanoAgent website to learn more, see live demos, and get started.
 
@@ -42,39 +42,39 @@ Visit the official NanoAgent website to learn more, see live demos, and get star
 
 NanoAgent is a **fully autonomous web agent** that lives inside your Chrome browser's side panel. Give it a task in plain English, and it will:
 
-- 🔍 **See** — Scan and understand every element on the current webpage
-- 🧭 **Navigate** — Click buttons, fill forms, switch tabs, and browse the internet
-- 📝 **Extract** — Pull data from pages and compile structured results
-- 💬 **Remember** — Maintain context across multi-step tasks
-- 📱 **Remote Execute** — Accept commands via WhatsApp from your phone
+- <img src="https://fonts.gstatic.com/s/i/short-term/release/materialsymbolsrounded/search/default/20px.svg" width="16"> **See** — Scan and understand every element on the current webpage
+- <img src="https://fonts.gstatic.com/s/i/short-term/release/materialsymbolsrounded/explore/default/20px.svg" width="16"> **Navigate** — Click buttons, fill forms, switch tabs, and browse the internet
+- <img src="https://fonts.gstatic.com/s/i/short-term/release/materialsymbolsrounded/description/default/20px.svg" width="16"> **Extract** — Pull data from pages and compile structured results
+- <img src="https://fonts.gstatic.com/s/i/short-term/release/materialsymbolsrounded/psychology/default/20px.svg" width="16"> **Remember** — Maintain context across multi-step tasks
+- <img src="https://fonts.gstatic.com/s/i/short-term/release/materialsymbolsrounded/smartphone/default/20px.svg" width="16"> **Remote Execute** — Accept commands via WhatsApp from your phone
 
 > **Think of it as an AI intern that can use Chrome just like you do — reading pages, clicking links, typing into search bars, and reporting back with answers.**
 
 ---
 
-## 🎬 See It In Action
+## <img src="https://fonts.gstatic.com/s/i/short-term/release/materialsymbolsrounded/play_circle/default/20px.svg" width="20"> See It In Action
 
 https://github.com/user-attachments/assets/ff0c2171-3298-43f8-8c1e-8633286a4755.mp4
 
 ---
 
-## ✨ Features
+## <img src="https://fonts.gstatic.com/s/i/short-term/release/materialsymbolsrounded/auto_awesome/default/20px.svg" width="20"> Features
 
 | Feature | Description |
 |---------|-------------|
-|  **Dual-Brain Architecture** | Separate Planner (reasoning) and Navigator (action) models for superior task execution |
-|  **Universal LLM Support** | Works with Gemini, OpenAI, OpenRouter, DeepSeek, Groq, Ollama, LM Studio, and any OpenAI-compatible provider |
-|  **DOM Vision Engine** | Reads and indexes interactive page elements in real-time for precise actions |
-|  **Multi-Tab Navigation** | Seamlessly switches between tabs to gather information across multiple pages |
-|  **Persistent Memory** | Stores extracted data across steps and compiles final results |
-|  **WhatsApp Remote Control** | Send commands from your phone, get results delivered back via WhatsApp |
-|  **Auto-Retry & Self-Healing** | Gracefully handles API errors, rate limits, and failed actions with automatic retries |
-|  **Privacy-First** | All processing happens locally in your browser. No data leaves your machine except LLM API calls |
-|  **Beautiful Dark UI** | Sleek, modern sidepanel interface with real-time execution logs |
+| <img src="https://fonts.gstatic.com/s/i/short-term/release/materialsymbolsrounded/psychology/default/20px.svg" width="16"> **Dual-Brain Architecture** | Separate Planner (reasoning) and Navigator (action) models for superior task execution |
+| <img src="https://fonts.gstatic.com/s/i/short-term/release/materialsymbolsrounded/extension/default/20px.svg" width="16"> **Universal LLM Support** | Works with Gemini, OpenAI, OpenRouter, DeepSeek, Groq, Ollama, LM Studio, and any OpenAI-compatible provider |
+| <img src="https://fonts.gstatic.com/s/i/short-term/release/materialsymbolsrounded/visibility/default/20px.svg" width="16"> **DOM Vision Engine** | Reads and indexes interactive page elements in real-time for precise actions |
+| <img src="https://fonts.gstatic.com/s/i/short-term/release/materialsymbolsrounded/tab/default/20px.svg" width="16"> **Multi-Tab Navigation** | Seamlessly switches between tabs to gather information across multiple pages |
+| <img src="https://fonts.gstatic.com/s/i/short-term/release/materialsymbolsrounded/memory/default/20px.svg" width="16"> **Persistent Memory** | Stores extracted data across steps and compiles final results |
+| <img src="https://fonts.gstatic.com/s/i/short-term/release/materialsymbolsrounded/smartphone/default/20px.svg" width="16"> **WhatsApp Remote Control** | Send commands from your phone, get results delivered back via WhatsApp |
+| <img src="https://fonts.gstatic.com/s/i/short-term/release/materialsymbolsrounded/autorenew/default/20px.svg" width="16"> **Auto-Retry & Self-Healing** | Gracefully handles API errors, rate limits, and failed actions with automatic retries |
+| <img src="https://fonts.gstatic.com/s/i/short-term/release/materialsymbolsrounded/shield/default/20px.svg" width="16"> **Privacy-First** | All processing happens locally in your browser. No data leaves your machine except LLM API calls |
+| <img src="https://fonts.gstatic.com/s/i/short-term/release/materialsymbolsrounded/palette/default/20px.svg" width="16"> **Beautiful Dark UI** | Sleek, modern sidepanel interface with real-time execution logs |
 
 ---
 
-##  Quick Start
+## <img src="https://fonts.gstatic.com/s/i/short-term/release/materialsymbolsrounded/rocket_launch/default/20px.svg" width="20"> Quick Start
 
 ### 1. Download & Install
 
@@ -99,7 +99,7 @@ cd NanoAgent_LLM-Based_Agentic_Al
 1. Right-click the NanoAgent icon → **Options**
 2. Choose your API provider (Gemini, OpenAI, OpenRouter, etc.)
 3. Paste your API key
-4. Click **"⚡ Load Available Models"** to auto-discover models
+4. Click **"<img src="https://fonts.gstatic.com/s/i/short-term/release/materialsymbolsrounded/bolt/default/20px.svg" width="12"> Load Available Models"** to auto-discover models
 5. Select a **Planner** model and a **Navigator** model
 6. Click **"Save Brain Configuration"**
 
@@ -110,11 +110,11 @@ cd NanoAgent_LLM-Based_Agentic_Al
    - *"Find the current price of Bitcoin"*
    - *"Go to Amazon and find the cheapest MacBook Air"*
    - *"Search YouTube for the latest video by Markiplier and tell me the title"*
-3. Click **▶ Start** and watch the AI work!
+3. Click **<img src="https://fonts.gstatic.com/s/i/short-term/release/materialsymbolsrounded/play_arrow/default/20px.svg" width="12"> Start** and watch the AI work!
 
 ---
 
-##  Screenshots
+## <img src="https://fonts.gstatic.com/s/i/short-term/release/materialsymbolsrounded/screenshot_monitor/default/20px.svg" width="20"> Screenshots
 
 <p align="center">
   <img src="assets/screenshot-sidepanel.png" width="300" alt="NanoAgent Sidepanel">
@@ -124,7 +124,7 @@ cd NanoAgent_LLM-Based_Agentic_Al
 
 ---
 
-## ⚙️ Architecture
+## <img src="https://fonts.gstatic.com/s/i/short-term/release/materialsymbolsrounded/settings/default/20px.svg" width="20"> Architecture
 
 NanoAgent uses a **Dual-Brain Architecture** — two separate LLM instances working in tandem:
 
@@ -156,7 +156,7 @@ NanoAgent uses a **Dual-Brain Architecture** — two separate LLM instances work
 
 ---
 
-## 📱 WhatsApp Remote Control
+## <img src="https://fonts.gstatic.com/s/i/short-term/release/materialsymbolsrounded/smartphone/default/20px.svg" width="20"> WhatsApp Remote Control
 
 NanoAgent includes an optional **WhatsApp Remote Control** feature. This lets you send commands to your browser agent directly from your phone.
 
@@ -170,7 +170,7 @@ NanoAgent includes an optional **WhatsApp Remote Control** feature. This lets yo
 /nanoagent what is the current price of ethereum
 ```
 
-4. NanoAgent executes the task in Chrome and sends you the results back via WhatsApp! 💬
+4. NanoAgent executes the task in Chrome and sends you the results back via WhatsApp! <img src="https://fonts.gstatic.com/s/i/short-term/release/materialsymbolsrounded/chat/default/20px.svg" width="14">
 
 > **Note:** The WhatsApp bridge requires the NanoBridge companion app to be running locally. See the [NanoBridge Setup](#nanobridge-setup) section below.
 
@@ -186,7 +186,7 @@ Or use the pre-built macOS app from the `dist/` folder.
 
 ---
 
-##  Supported Providers
+## <img src="https://fonts.gstatic.com/s/i/short-term/release/materialsymbolsrounded/dns/default/20px.svg" width="20"> Supported Providers
 
 NanoAgent works with **any OpenAI-compatible API endpoint**, plus native Gemini support:
 
@@ -210,7 +210,7 @@ For zero-cost usage, use **OpenRouter** with free models:
 
 ---
 
-##  Project Structure
+## <img src="https://fonts.gstatic.com/s/i/short-term/release/materialsymbolsrounded/folder_open/default/20px.svg" width="20"> Project Structure
 
 ```
 NanoAgent/
@@ -232,7 +232,7 @@ NanoAgent/
 
 ---
 
-##  Privacy & Security
+## <img src="https://fonts.gstatic.com/s/i/short-term/release/materialsymbolsrounded/lock/default/20px.svg" width="20"> Privacy & Security
 
 - **No data collection.** NanoAgent does not send any data to any server other than your chosen LLM API.
 - **API keys are stored locally** in Chrome's `chrome.storage.sync` — they never leave your browser.
@@ -241,7 +241,7 @@ NanoAgent/
 
 ---
 
-##  Contributing
+## <img src="https://fonts.gstatic.com/s/i/short-term/release/materialsymbolsrounded/group/default/20px.svg" width="20"> Contributing
 
 Contributions are welcome! Feel free to:
 
@@ -253,18 +253,18 @@ Contributions are welcome! Feel free to:
 
 ---
 
-##  License
+## <img src="https://fonts.gstatic.com/s/i/short-term/release/materialsymbolsrounded/gavel/default/20px.svg" width="20"> License
 This project is licensed under a **Custom License (Attribution-NonCommercial)** — see the [LICENSE](LICENSE) file for details. You may use, modify, and distribute this software with proper attribution, but commercial use and resale are strictly prohibited.
 
 ---
 
-##  Author
+## <img src="https://fonts.gstatic.com/s/i/short-term/release/materialsymbolsrounded/person/default/20px.svg" width="20"> Author
 
 **Rajveer Sahay**  
-Built with ☕ and curiosity.
+Built with <img src="https://fonts.gstatic.com/s/i/short-term/release/materialsymbolsrounded/coffee/default/20px.svg" width="14"> and curiosity.
 
 ---
 
 <p align="center">
-  <sub>If NanoAgent helped you, consider giving it a ⭐ on GitHub!</sub>
+  <sub>If NanoAgent helped you, consider giving it a <img src="https://fonts.gstatic.com/s/i/short-term/release/materialsymbolsrounded/star/default/20px.svg" width="12"> on GitHub!</sub>
 </p>
