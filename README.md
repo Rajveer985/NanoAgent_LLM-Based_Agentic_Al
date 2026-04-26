@@ -2,53 +2,97 @@
   <img src="assets/logo.png" width="180" alt="NanoAgent Logo">
 </p>
 
-<h1 align="center"> NanoAgent — Autonomous Browser AI</h1>
+<h1 align="center"> NanoAgent — Autonomous AI Workflow Platform</h1>
 
 <p align="center">
-  <em>An open-source, LLM-powered Chrome extension that sees, thinks, and acts on the web for you.</em>
+  <em>An open-source, three-system integration that connects browser automation, code generation, and AI command orchestration into one autonomous pipeline.</em>
 </p>
 
 <p align="center">
   <a href="https://nanoagent.vercel.app/"><img src="https://img.shields.io/badge/Live_Demo-nanoagent.vercel.app-00C7B7?style=flat-square&logo=vercel&logoColor=white" alt="Live Demo"></a>
   <img src="https://img.shields.io/badge/Manifest-V3-blue?style=flat-square&logo=googlechrome&logoColor=white" alt="Manifest V3">
-  <img src="https://img.shields.io/badge/Release-v1.1-brightgreen?style=flat-square" alt="Release">
+  <img src="https://img.shields.io/badge/Release-v7.57-brightgreen?style=flat-square" alt="Release">
   <img src="https://img.shields.io/badge/License-Custom%20(Non--Commercial)-yellow?style=flat-square" alt="License">
-  <img src="https://img.shields.io/badge/Platform-Chrome-red?style=flat-square&logo=googlechrome&logoColor=white" alt="Platform">
+  <img src="https://img.shields.io/badge/Platform-Chrome%20%7C%20VS_Code%20%7C%20Open_WebUI-red?style=flat-square" alt="Platform">
   <img src="https://img.shields.io/badge/LLM-Any_Provider-purple?style=flat-square" alt="LLM">
 </p>
 
 <p align="center">
-  <a href="https://nanoagent.vercel.app/"><strong><img src="https://fonts.gstatic.com/s/i/short-term/release/materialsymbolsrounded/language/default/20px.svg" width="14"> Visit Website</strong></a> · 
-  <a href="#-features">Features</a> · 
-  <a href="#-quick-start">Quick Start</a> · 
-  <a href="#-screenshots">Screenshots</a> ·
-  <a href="#-architecture">Architecture</a> ·
-  <a href="#-whatsapp-remote-control">WhatsApp Remote</a> ·
-  <a href="#-supported-providers">Providers</a> ·
+  <a href="https://nanoagent.vercel.app/"><strong><img src="https://fonts.gstatic.com/s/i/short-term/release/materialsymbolsrounded/language/default/20px.svg" width="14"> Website</strong></a> · 
+  <a href="#-the-three-system-pipeline">Pipeline</a> · 
+  <a href="#-core-features">Features</a> · 
+  <a href="#-system-architecture">Architecture</a> · 
+  <a href="#-quick-start">Quick Start</a> ·
+  <a href="#-nanobridge-server">NanoBridge</a> ·
+  <a href="#-vs-code-copilot-bridge">Copilot Bridge</a> ·
+  <a href="#-whatsapp-remote-control">WhatsApp</a> ·
+  <a href="#-api-reference">API</a> ·
   <a href="#-contributing">Contributing</a>
 </p>
 
 ---
 
-## <img src="https://fonts.gstatic.com/s/i/short-term/release/materialsymbolsrounded/language/default/20px.svg" width="20"> Website
+## What is NanoAgent?
 
-**<img src="https://fonts.gstatic.com/s/i/short-term/release/materialsymbolsrounded/arrow_forward/default/20px.svg" width="14"> [nanoagent.vercel.app](https://nanoagent.vercel.app/)**
+NanoAgent is not just a browser automation tool — it is a **complete autonomous AI workflow platform** that connects three independent systems into a seamless pipeline:
 
-Visit the official NanoAgent website to learn more, see live demos, and get started.
+<table>
+<tr>
+<td width="33%" align="center">
+<img src="https://fonts.gstatic.com/s/i/short-term/release/materialsymbolsrounded/language/default/48px.svg" width="40"><br>
+<strong>Open WebUI / Demo UI</strong><br>
+<sub>Command Center</sub>
+</td>
+<td width="33%" align="center">
+<img src="https://fonts.gstatic.com/s/i/short-term/release/materialsymbolsrounded/code/default/48px.svg" width="40"><br>
+<strong>VS Code + GitHub Copilot</strong><br>
+<sub>Code Builder</sub>
+</td>
+<td width="33%" align="center">
+<img src="https://fonts.gstatic.com/s/i/short-term/release/materialsymbolsrounded/extension/default/48px.svg" width="40"><br>
+<strong>NanoAgent Chrome Extension</strong><br>
+<sub>Browser Executor</sub>
+</td>
+</tr>
+</table>
+
+Give it a high-level goal like *"Build a weather app and test it in the browser"* — and the full pipeline orchestrates code generation, browser automation, data extraction, and result delivery **without human intervention**.
 
 ---
 
-## What is NanoAgent?
+## <img src="https://fonts.gstatic.com/s/i/short-term/release/materialsymbolsrounded/account_tree/default/20px.svg" width="20"> The Three-System Pipeline
 
-NanoAgent is a **fully autonomous web agent** that lives inside your Chrome browser's side panel. Give it a task in plain English, and it will:
+```
+User types goal in Open WebUI / Demo UI
+       │
+       │  POST /webhook/open-webui
+       ▼
+┌─────────────────────────────┐
+│  Webhook Middleware (:3001)  │  Saves prompt to .pending-prompt file
+└──────────────┬──────────────┘
+               │  File system event
+               ▼
+┌──────────────────────────────────┐
+│  VS Code + Copilot Agent Mode    │  Reads prompt, generates code,
+│  + NanoAgent Copilot Bridge      │  submits browser tasks via API
+└──────────────┬───────────────────┘
+               │  POST /api/task
+               ▼
+┌─────────────────────────────┐
+│  NanoBridge Server (:3000)   │  Queues tasks, manages polling
+└──────────────┬──────────────┘
+               │  GET /api/task-poll (every 3s)
+               ▼
+┌──────────────────────────────────┐
+│  NanoAgent Chrome Extension      │  Picks up task, auto-executes
+│  (Dual-Brain LLM Architecture)   │  Drives Chrome autonomously
+└──────────────┬───────────────────┘
+               │  POST /api/task/complete
+               ▼
+       Results flow back through the pipeline
+```
 
-- <img src="https://fonts.gstatic.com/s/i/short-term/release/materialsymbolsrounded/search/default/20px.svg" width="16"> **See** — Scan and understand every element on the current webpage
-- <img src="https://fonts.gstatic.com/s/i/short-term/release/materialsymbolsrounded/explore/default/20px.svg" width="16"> **Navigate** — Click buttons, fill forms, switch tabs, and browse the internet
-- <img src="https://fonts.gstatic.com/s/i/short-term/release/materialsymbolsrounded/description/default/20px.svg" width="16"> **Extract** — Pull data from pages and compile structured results
-- <img src="https://fonts.gstatic.com/s/i/short-term/release/materialsymbolsrounded/psychology/default/20px.svg" width="16"> **Remember** — Maintain context across multi-step tasks
-- <img src="https://fonts.gstatic.com/s/i/short-term/release/materialsymbolsrounded/smartphone/default/20px.svg" width="16"> **Remote Execute** — Accept commands via WhatsApp from your phone
-
-> **Think of it as an AI intern that can use Chrome just like you do — reading pages, clicking links, typing into search bars, and reporting back with answers.**
+**Each system works independently, but together they enable fully autonomous software development and web automation workflows.**
 
 ---
 
@@ -58,75 +102,28 @@ https://github.com/user-attachments/assets/ff0c2171-3298-43f8-8c1e-8633286a4755.
 
 ---
 
-## <img src="https://fonts.gstatic.com/s/i/short-term/release/materialsymbolsrounded/auto_awesome/default/20px.svg" width="20"> Features
+## <img src="https://fonts.gstatic.com/s/i/short-term/release/materialsymbolsrounded/auto_awesome/default/20px.svg" width="20"> Core Features
 
 | Feature | Description |
 |---------|-------------|
-| <img src="https://fonts.gstatic.com/s/i/short-term/release/materialsymbolsrounded/psychology/default/20px.svg" width="16"> **Dual-Brain Architecture** | Separate Planner (reasoning) and Navigator (action) models for superior task execution |
-| <img src="https://fonts.gstatic.com/s/i/short-term/release/materialsymbolsrounded/extension/default/20px.svg" width="16"> **Universal LLM Support** | Works with Gemini, OpenAI, OpenRouter, DeepSeek, Groq, Ollama, LM Studio, and any OpenAI-compatible provider |
-| <img src="https://fonts.gstatic.com/s/i/short-term/release/materialsymbolsrounded/visibility/default/20px.svg" width="16"> **DOM Vision Engine** | Reads and indexes interactive page elements in real-time for precise actions |
-| <img src="https://fonts.gstatic.com/s/i/short-term/release/materialsymbolsrounded/tab/default/20px.svg" width="16"> **Multi-Tab Navigation** | Seamlessly switches between tabs to gather information across multiple pages |
-| <img src="https://fonts.gstatic.com/s/i/short-term/release/materialsymbolsrounded/memory/default/20px.svg" width="16"> **Persistent Memory** | Stores extracted data across steps and compiles final results |
-| <img src="https://fonts.gstatic.com/s/i/short-term/release/materialsymbolsrounded/smartphone/default/20px.svg" width="16"> **WhatsApp Remote Control** | Send commands from your phone, get results delivered back via WhatsApp |
-| <img src="https://fonts.gstatic.com/s/i/short-term/release/materialsymbolsrounded/autorenew/default/20px.svg" width="16"> **Auto-Retry & Self-Healing** | Gracefully handles API errors, rate limits, and failed actions with automatic retries |
-| <img src="https://fonts.gstatic.com/s/i/short-term/release/materialsymbolsrounded/shield/default/20px.svg" width="16"> **Privacy-First** | All processing happens locally in your browser. No data leaves your machine except LLM API calls |
-| <img src="https://fonts.gstatic.com/s/i/short-term/release/materialsymbolsrounded/palette/default/20px.svg" width="16"> **Beautiful Dark UI** | Sleek, modern sidepanel interface with real-time execution logs |
+| <img src="https://fonts.gstatic.com/s/i/short-term/release/materialsymbolsrounded/psychology/default/20px.svg" width="16"> **Dual-Brain LLM Architecture** | Planner model for high-level strategy + Navigator model for step-by-step DOM execution. Two LLMs working in tandem for superior task completion. |
+| <img src="https://fonts.gstatic.com/s/i/short-term/release/materialsymbolsrounded/account_tree/default/20px.svg" width="16"> **Three-System Integration** | Full autonomous pipeline: Open WebUI / Demo UI → VS Code Copilot → NanoAgent Chrome Extension. End-to-end task execution without human intervention. |
+| <img src="https://fonts.gstatic.com/s/i/short-term/release/materialsymbolsrounded/visibility/default/20px.svg" width="16"> **DOM Vision Engine** | Real-time scanning and indexing of interactive page elements with noise filtering, priority scoring, deduplication, and banned element memory. |
+| <img src="https://fonts.gstatic.com/s/i/short-term/release/materialsymbolsrounded/code/default/20px.svg" width="16"> **VS Code Copilot Bridge** | Custom VS Code extension that watches for `.pending-prompt` files and auto-forwards prompts to GitHub Copilot Agent Mode for code generation. |
+| <img src="https://fonts.gstatic.com/s/i/short-term/release/materialsymbolsrounded/dns/default/20px.svg" width="16"> **NanoBridge API Server** | Express.js server with task submission, polling, result retrieval, and WhatsApp integration endpoints. Central hub for all inter-system communication. |
+| <img src="https://fonts.gstatic.com/s/i/short-term/release/materialsymbolsrounded/webhook/default/20px.svg" width="16"> **Webhook Middleware** | Receives prompts from Open WebUI via webhook and bridges them to VS Code through file-based communication on port 3001. |
+| <img src="https://fonts.gstatic.com/s/i/short-term/release/materialsymbolsrounded/tab/default/20px.svg" width="16"> **Multi-Tab Orchestration** | Opens background tabs, switches between active tabs, and manages concurrent browsing contexts without losing agent state. |
+| <img src="https://fonts.gstatic.com/s/i/short-term/release/materialsymbolsrounded/smartphone/default/20px.svg" width="16"> **WhatsApp Remote Control** | Send commands from your phone via WhatsApp, receive results back. Full remote control through the NanoBridge companion server. |
+| <img src="https://fonts.gstatic.com/s/i/short-term/release/materialsymbolsrounded/table_chart/default/20px.svg" width="16"> **Google Sheets Auto-Export** | Planning/research tasks automatically open Google Sheets and inject extracted data via clipboard simulation with ghost mouse cursor. |
+| <img src="https://fonts.gstatic.com/s/i/short-term/release/materialsymbolsrounded/extension/default/20px.svg" width="16"> **Universal LLM Support** | Works with Gemini, OpenAI, OpenRouter, DeepSeek, Groq, Ollama, LM Studio, and any OpenAI-compatible provider. |
+| <img src="https://fonts.gstatic.com/s/i/short-term/release/materialsymbolsrounded/autorenew/default/20px.svg" width="16"> **Self-Healing Execution** | Auto-retry on API errors, loop trap detection, banned element filtering, 404 page detection, modal/popup auto-dismissal, and JSON hallucination correction. |
+| <img src="https://fonts.gstatic.com/s/i/short-term/release/materialsymbolsrounded/shield/default/20px.svg" width="16"> **Privacy-First** | All processing happens locally. No data collection, no analytics, no telemetry. API keys stored in Chrome's local storage. |
 
 ---
 
-## <img src="https://fonts.gstatic.com/s/i/short-term/release/materialsymbolsrounded/rocket_launch/default/20px.svg" width="20"> Quick Start
+## <img src="https://fonts.gstatic.com/s/i/short-term/release/materialsymbolsrounded/settings/default/20px.svg" width="20"> System Architecture
 
-### 1. Download & Install
-
-```bash
-# Clone the repository
-git clone https://github.com/Rajveer-sahay985/NanoAgent_LLM-Based_Agentic_Al.git
-
-# Navigate to the project
-cd NanoAgent_LLM-Based_Agentic_Al
-```
-
-### 2. Load the Extension in Chrome
-
-1. Open Chrome and go to `chrome://extensions/`
-2. Enable **Developer Mode** (toggle in top-right)
-3. Click **"Load Unpacked"**
-4. Select the `nano-extension-v7.57` folder
-5. Pin NanoAgent to your toolbar
-
-### 3. Configure Your LLM
-
-1. Right-click the NanoAgent icon → **Options**
-2. Choose your API provider (Gemini, OpenAI, OpenRouter, etc.)
-3. Paste your API key
-4. Click **"<img src="https://fonts.gstatic.com/s/i/short-term/release/materialsymbolsrounded/bolt/default/20px.svg" width="12"> Load Available Models"** to auto-discover models
-5. Select a **Planner** model and a **Navigator** model
-6. Click **"Save Brain Configuration"**
-
-### 4. Start Using NanoAgent
-
-1. Click the NanoAgent icon to open the **sidepanel**
-2. Type your task in plain English:
-   - *"Find the current price of Bitcoin"*
-   - *"Go to Amazon and find the cheapest MacBook Air"*
-   - *"Search YouTube for the latest video by Markiplier and tell me the title"*
-3. Click **<img src="https://fonts.gstatic.com/s/i/short-term/release/materialsymbolsrounded/play_arrow/default/20px.svg" width="12"> Start** and watch the AI work!
-
----
-
-## <img src="https://fonts.gstatic.com/s/i/short-term/release/materialsymbolsrounded/screenshot_monitor/default/20px.svg" width="20"> Screenshots
-
-<p align="center">
-  <img src="assets/screenshot-sidepanel.png" width="300" alt="NanoAgent Sidepanel">
-  &nbsp;&nbsp;&nbsp;
-  <img src="assets/screenshot-settings.png" width="450" alt="Settings Page">
-</p>
-
----
-
-## <img src="https://fonts.gstatic.com/s/i/short-term/release/materialsymbolsrounded/settings/default/20px.svg" width="20"> Architecture
-
-NanoAgent uses a **Dual-Brain Architecture** — two separate LLM instances working in tandem:
+NanoAgent's **Dual-Brain Architecture** uses two separate LLM instances working in tandem:
 
 ```
 ┌─────────────────────────────────────────────┐
@@ -150,31 +147,50 @@ NanoAgent uses a **Dual-Brain Architecture** — two separate LLM instances work
          └─────────┬──────────┘
                    │
               ┌────▼────┐
-              │ RESULTS  │ → Displayed in sidepanel
-              └──────────┘    or sent to WhatsApp
+              │ RESULTS  │ → Sidepanel / WhatsApp / API / Sheets
+              └──────────┘
 ```
+
+### Smart Task Classification
+
+The agent automatically classifies every task and routes results accordingly:
+
+| Task Type | Example | Result Destination |
+|-----------|---------|-------------------|
+| **Navigation** | *"Go to GitHub"* | Visual confirmation |
+| **Extraction** | *"Find the price of Bitcoin"* | WhatsApp + Sidepanel |
+| **Planning/Research** | *"Plan a vacation to Pune"* | Auto-export to Google Sheets |
+| **Action** | *"Fill out this form"* | Execution confirmation |
+| **Transfer** | *"Extract data and paste into Sheets"* | Google Sheets injection |
 
 ---
 
-## <img src="https://fonts.gstatic.com/s/i/short-term/release/materialsymbolsrounded/smartphone/default/20px.svg" width="20"> WhatsApp Remote Control
+## <img src="https://fonts.gstatic.com/s/i/short-term/release/materialsymbolsrounded/rocket_launch/default/20px.svg" width="20"> Quick Start
 
-NanoAgent includes an optional **WhatsApp Remote Control** feature. This lets you send commands to your browser agent directly from your phone.
+### 1. Clone the Repository
 
-### How it works
-
-1. Download and run the **NanoBridge** companion app (included in `nano-web-v7.57/`)
-2. Scan the QR code in the Extension's **Options** page or the NanoBridge desktop window
-3. Send a message starting with `/nanoagent` from your linked WhatsApp:
-
-```
-/nanoagent what is the current price of ethereum
+```bash
+git clone https://github.com/Rajveer-sahay985/NanoAgent_LLM-Based_Agentic_Al.git
+cd NanoAgent_LLM-Based_Agentic_Al
 ```
 
-4. NanoAgent executes the task in Chrome and sends you the results back via WhatsApp! <img src="https://fonts.gstatic.com/s/i/short-term/release/materialsymbolsrounded/chat/default/20px.svg" width="14">
+### 2. Load the Chrome Extension
 
-> **Note:** The WhatsApp bridge requires the NanoBridge companion app to be running locally. See the [NanoBridge Setup](#nanobridge-setup) section below.
+1. Open Chrome → `chrome://extensions/`
+2. Enable **Developer Mode** (toggle in top-right)
+3. Click **"Load Unpacked"** → select the `nano-extension-v7.57` folder
+4. Pin NanoAgent to your toolbar
 
-### NanoBridge Setup
+### 3. Configure Your LLM
+
+1. Right-click the NanoAgent icon → **Options**
+2. Choose your API provider (Gemini, OpenAI, OpenRouter, etc.)
+3. Paste your API key
+4. Click **"Load Available Models"** to auto-discover models
+5. Select a **Planner** model and a **Navigator** model
+6. Click **"Save Brain Configuration"**
+
+### 4. Start NanoBridge Server
 
 ```bash
 cd nano-web-v7.57
@@ -182,7 +198,116 @@ npm install
 node server.js
 ```
 
-Or use the pre-built macOS app from the `dist/` folder.
+### 5. (Optional) Start Webhook Middleware
+
+```bash
+# In a separate terminal
+cd nano-web-v7.57
+node webhook-middleware.js
+```
+
+### 6. Start Using NanoAgent
+
+1. Click the NanoAgent icon to open the **sidepanel**
+2. Type your task in plain English:
+   - *"Find the current price of Bitcoin"*
+   - *"Go to Amazon and find the cheapest MacBook Air"*
+   - *"Plan a 3-day vacation to Pune with hotels and flights"*
+3. Click **Start** and watch the AI work!
+
+---
+
+## <img src="https://fonts.gstatic.com/s/i/short-term/release/materialsymbolsrounded/screenshot_monitor/default/20px.svg" width="20"> Screenshots
+
+<p align="center">
+  <img src="assets/screenshot-sidepanel.png" width="300" alt="NanoAgent Sidepanel">
+  &nbsp;&nbsp;&nbsp;
+  <img src="assets/screenshot-settings.png" width="450" alt="Settings Page">
+</p>
+
+---
+
+## <img src="https://fonts.gstatic.com/s/i/short-term/release/materialsymbolsrounded/hub/default/20px.svg" width="20"> NanoBridge Server
+
+The NanoBridge server (`nano-web-v7.57/server.js`) is the central communication hub running on `localhost:3000`. It handles:
+
+- **WhatsApp Remote Control** — QR auth, message polling, result delivery
+- **API Task Queue** — Accepts tasks from VS Code Copilot, queues them for the extension
+- **Result Pipeline** — Collects results from the extension, serves them to API callers
+- **Electron Desktop App** — Pre-built macOS app with a native UI wrapper
+
+```bash
+cd nano-web-v7.57
+npm install
+node server.js        # Express server on port 3000
+```
+
+---
+
+## <img src="https://fonts.gstatic.com/s/i/short-term/release/materialsymbolsrounded/code/default/20px.svg" width="20"> VS Code Copilot Bridge
+
+The Copilot Bridge (`nano-copilot-bridge/`) is a custom VS Code extension that connects the Demo UI to GitHub Copilot Agent Mode:
+
+- **File Watcher** — Monitors workspace for `.pending-prompt` files
+- **Auto-Forward** — Sends prompts directly to Copilot Chat
+- **Status Bar** — Toggle ON/OFF from the VS Code status bar
+- **Pre-built VSIX** — Install directly from `nano-copilot-bridge-1.0.0.vsix`
+
+Additionally, `.github/copilot-instructions.md` teaches Copilot how to use the NanoAgent API for browser verification during code generation.
+
+---
+
+## <img src="https://fonts.gstatic.com/s/i/short-term/release/materialsymbolsrounded/smartphone/default/20px.svg" width="20"> WhatsApp Remote Control
+
+Send commands from your phone and receive results — all through WhatsApp:
+
+1. Start the NanoBridge server (`node server.js`)
+2. Scan the QR code from the extension's **Options** page
+3. Send a message starting with `/nanoagent` from WhatsApp:
+
+```
+/nanoagent what is the current price of ethereum
+```
+
+4. NanoAgent auto-executes the task in Chrome and sends results back via WhatsApp.
+
+---
+
+## <img src="https://fonts.gstatic.com/s/i/short-term/release/materialsymbolsrounded/terminal/default/20px.svg" width="20"> API Reference
+
+### NanoBridge Server (Port 3000)
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/task` | POST | Submit a browser task `{ "task": "..." }` |
+| `/api/task/result` | GET | Poll for task result (`idle` / `processing` / `complete`) |
+| `/api/task-poll` | GET | Extension polls this to receive queued tasks |
+| `/api/task/complete` | POST | Extension sends results back `{ "result": "..." }` |
+| `/api/whatsapp-qr` | GET | WhatsApp connection status and QR code |
+| `/api/whatsapp-poll` | GET | Extension polls for WhatsApp remote tasks |
+| `/api/whatsapp-send` | POST | Send results back to WhatsApp |
+| `/api/whatsapp-target-manual` | POST | Set WhatsApp target number |
+| `/api/auth-status` | GET | Auth check (auto-unlocked) |
+
+### Webhook Middleware (Port 3001)
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/webhook/open-webui` | POST | Receive prompts from Open WebUI |
+| `/health` | GET | Health check |
+| `/` | GET | Serves the Demo UI (Command Center) |
+
+### Example: Submit a Task via CLI
+
+```bash
+# Submit a task
+curl -X POST http://localhost:3000/api/task \
+  -H "Content-Type: application/json" \
+  -d '{"task": "Go to example.com and extract the heading"}'
+
+# Poll for result
+curl http://localhost:3000/api/task/result
+```
 
 ---
 
@@ -202,7 +327,7 @@ NanoAgent works with **any OpenAI-compatible API endpoint**, plus native Gemini 
 
 ### Recommended Free Setup
 
-For zero-cost usage, use **OpenRouter** with free models:
+Use **OpenRouter** with free models for zero-cost usage:
 1. Sign up at [openrouter.ai](https://openrouter.ai)
 2. Get a free API key
 3. Set Base URL to: `https://openrouter.ai/api/v1/chat/completions`
@@ -214,21 +339,52 @@ For zero-cost usage, use **OpenRouter** with free models:
 
 ```
 NanoAgent/
-├── nano-extension-v7.57/     # Chrome Extension (load this in chrome://extensions)
-│   ├── manifest.json         # Extension manifest (MV3)
-│   ├── background.js         # Service worker
-│   ├── sidepanel.html/js     # Main agent UI + execution engine
-│   └── options.html/js       # Settings page with LLM + WhatsApp config
+├── nano-extension-v7.57/          # Chrome Extension (Manifest V3)
+│   ├── manifest.json              # Extension manifest
+│   ├── background.js              # Service worker
+│   ├── sidepanel.html/js          # Agent UI + dual-brain execution engine
+│   ├── options.html/js            # Settings: LLM config + WhatsApp setup
+│   └── icons/                     # Extension icons
 │
-├── nano-web-v7.57/           # NanoBridge — WhatsApp companion server
-│   ├── server.js             # Express + WhatsApp-Web.js bridge
-│   ├── main.js               # Electron wrapper for desktop app
-│   ├── index.html            # Desktop app UI
-│   └── package.json          # Dependencies & build config
+├── nano-web-v7.57/                # NanoBridge — Companion Server
+│   ├── server.js                  # Express server (port 3000) — API + WhatsApp
+│   ├── webhook-middleware.js       # Open WebUI webhook receiver (port 3001)
+│   ├── demo-ui.html               # Command Center web UI
+│   ├── main.js                    # Electron wrapper for desktop app
+│   ├── index.html                 # Desktop app UI
+│   ├── INTEGRATION.md             # Full integration documentation
+│   └── package.json               # Dependencies & build config
 │
-├── assets/                   # Screenshots & logo
-└── README.md                 # You are here
+├── nano-copilot-bridge/           # VS Code Extension — Copilot Bridge
+│   ├── extension.js               # File watcher + Copilot Chat integration
+│   ├── package.json               # Extension manifest
+│   └── nano-copilot-bridge-1.0.0.vsix  # Pre-built installable
+│
+├── .github/
+│   └── copilot-instructions.md    # Teaches Copilot how to use NanoAgent API
+│
+├── index.html                     # Project website (deployed on Vercel)
+├── MASTER_PLAN_Three-System_Integration.md  # Full implementation reference
+├── SCOPES_AND_LIMITATIONS.md      # Scopes, limitations & future roadmap
+├── assets/                        # Screenshots, logo, demo video
+├── LICENSE                        # Custom License (Attribution-NonCommercial)
+└── README.md                      # You are here
 ```
+
+---
+
+## <img src="https://fonts.gstatic.com/s/i/short-term/release/materialsymbolsrounded/build/default/20px.svg" width="20"> Tech Stack
+
+| Technology | Role |
+|-----------|------|
+| **Chrome Extension (MV3)** | Browser automation agent |
+| **Node.js + Express.js** | NanoBridge API server |
+| **WhatsApp Web.js** | Remote control via WhatsApp |
+| **Electron** | Desktop app wrapper for NanoBridge |
+| **VS Code Extension API** | Copilot Bridge file watcher |
+| **GitHub Copilot Agent Mode** | AI code generation |
+| **Open WebUI** | Local Docker LLM command center |
+| **OpenAI-compatible LLM APIs** | Gemini, OpenRouter, DeepSeek, Groq, Ollama, etc. |
 
 ---
 
@@ -236,6 +392,7 @@ NanoAgent/
 
 - **No data collection.** NanoAgent does not send any data to any server other than your chosen LLM API.
 - **API keys are stored locally** in Chrome's `chrome.storage.sync` — they never leave your browser.
+- **Local-only communication.** All inter-system communication happens on localhost (ports 3000/3001).
 - **No analytics, no tracking, no telemetry.**
 - **Open source.** Every line of code is auditable right here.
 
@@ -245,15 +402,16 @@ NanoAgent/
 
 Contributions are welcome! Feel free to:
 
-1.  Fork the repository
-2.  Create a feature branch (`git checkout -b feature/amazing-feature`)
-3.  Commit your changes (`git commit -m 'Add amazing feature'`)
-4.  Push to the branch (`git push origin feature/amazing-feature`)
-5.  Open a Pull Request
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
 
 ---
 
 ## <img src="https://fonts.gstatic.com/s/i/short-term/release/materialsymbolsrounded/gavel/default/20px.svg" width="20"> License
+
 This project is licensed under a **Custom License (Attribution-NonCommercial)** — see the [LICENSE](LICENSE) file for details. You may use, modify, and distribute this software with proper attribution, but commercial use and resale are strictly prohibited.
 
 ---
