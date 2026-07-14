@@ -485,7 +485,7 @@ runBtn.onclick = async () => {
     const selectedProvider = apiProvider || "gemini";
     const defaultModel = selectedProvider === "gemini" ? "gemini-1.5-flash" : "meta-llama/llama-3.3-70b-instruct:free";
     let selectedPlanner = plannerModel || model || defaultModel;
-    const selectedNavigator = navigatorModel || model || defaultModel;
+    let selectedNavigator = navigatorModel || model || defaultModel;
     const selectedTemp = temperature !== undefined ? parseFloat(temperature) : 0.7;
 
     write(`Using Provider: ${selectedProvider.toUpperCase()}`, "debug");
@@ -1251,6 +1251,12 @@ runBtn.onclick = async () => {
                     if (step === 1 && selectedPlanner !== selectedNavigator) {
                         write(`[FALLBACK] Planner model has ZERO quota on this key. Demoting planning to Navigator model (${selectedNavigator})...`, "error");
                         selectedPlanner = selectedNavigator;
+                        step--; continue;
+                    }
+                    // 🧠 V8.4: SYMMETRIC FALLBACK — if the NAVIGATOR model is quota-dead but the Planner already worked, promote the Planner model
+                    if (step > 1 && selectedNavigator !== selectedPlanner) {
+                        write(`[FALLBACK] Navigator model has ZERO quota on this key. Promoting Planner model (${selectedPlanner}) to Navigator...`, "error");
+                        selectedNavigator = selectedPlanner;
                         step--; continue;
                     }
                     write("[STOP] Your API key has ZERO quota for this model (limit: 0). Waiting will NOT help. Open Settings and pick a model your plan actually supports.", "error");
