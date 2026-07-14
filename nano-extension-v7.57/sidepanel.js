@@ -192,9 +192,15 @@ function DOMScanner(showOverlays) {
         } else if (el.tagName === "A" && el.getAttribute("aria-label")) {
             text = el.getAttribute("aria-label");
         } else if (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable) {
-            text = el.value || el.placeholder || el.innerText || "Rich Text Field";
+            text = el.value || el.placeholder || el.getAttribute("aria-label") || el.innerText || "Rich Text Field";
         } else {
-            text = (el.innerText || "").trim();
+            // 🧠 V8.5: Icon buttons have no innerText — fall back to accessibility attributes so the LLM is never blind
+            text = (el.innerText || "").trim()
+                || (el.getAttribute("aria-label") || "").trim()
+                || (el.getAttribute("title") || "").trim()
+                || (el.getAttribute("alt") || "").trim()
+                || (el.value || "").toString().trim()
+                || (el.getAttribute("name") || "").trim();
         }
 
         text = text.substring(0, 70).replace(/\n/g, " ");
@@ -329,6 +335,8 @@ CRITICAL DIRECTIVES:
 15. NAVIGATION VS EXTRACTION: Short strings like "Places", "Hotels", "Flights", or "Overview" are CLICKABLE TABS. You must use 'click' to navigate to them! NEVER use 'extract_info' on navigation tabs. You should only 'extract_info' on actual detailed paragraphs or precise prices (e.g., "$150/night", "Shaniwar Wada Palace is a historical fort...").
 16. GOOGLE SEARCH RESULTS: If you are searching Google for complex data (like hotel prices) and the EXACT answers aren't perfectly visible in the snippet text, YOU MUST 'click' a blue search result link to enter the actual website! DO NOT desperately 'extract_info' useless snippets or ads (e.g. "Rooms & Suites", "hyatt.com") hoping they contain data!
 17. MISSION ACCOMPLISHED: Once you have completely satisfied the user's objective (e.g., extracting 5 places, 5 hotels, and 5 flights) and saved everything they asked for, your final action MUST BE 'finish'. Do not wander around endlessly!
+18. DIRECT SEARCH URLS: If submitting a search query has failed twice, STOP fighting the page UI. Use 'navigate' with a direct search URL instead: 'https://www.google.com/search?q=YOUR+QUERY' (spaces as +). This ALWAYS works.
+19. NEVER RESTART: If RECENT ACTIONS shows you already navigated, typed, or searched, do NOT redo those steps. Trust the [OBSERVATION] entries in your history and execute the NEXT unfinished step of the MISSION PLAN.
 
 RESPONSE FORMAT MUST BE EXACT JSON:
 {
@@ -1219,12 +1227,18 @@ runBtn.onclick = async () => {
 
                     await new Promise(r => setTimeout(r, 3000));
 
-                    // ✅ V8: SELF-VERIFICATION — confirm the click actually changed the page state
+                    // ✅ V8.5: CLOSED-LOOP OBSERVATION — always tell the LLM what its action actually did
                     try {
                         const [afterTab] = await chrome.tabs.query({ active: true, currentWindow: true });
-                        if (plan.action === "click" && afterTab && afterTab.url === urlBeforeAction && target.fullHref) {
-                            write(`[VERIFY] Click on a link did not change the page. Flagging for re-plan...`, "debug");
-                            actionHistory.push(`[SYSTEM VERIFY] Your last click on index ${plan.target_index} did NOT navigate anywhere (URL unchanged). The element may be decorative or broken. Pick a DIFFERENT element, or use 'navigate' with the direct URL instead.`);
+                        if (afterTab) {
+                            if (afterTab.url !== urlBeforeAction) {
+                                actionHistory.push(`[OBSERVATION] Your ${plan.action} WORKED — the page changed to: ${afterTab.url.substring(0, 80)}. Continue with the NEXT step of your plan.`);
+                            } else if (plan.action === "click") {
+                                write(`[VERIFY] Click did not change the page. Flagging for re-plan...`, "debug");
+                                actionHistory.push(`[SYSTEM VERIFY] Your last click on index ${plan.target_index} did NOT change the page (URL unchanged). The element may be decorative. Do NOT click it again — pick a DIFFERENT element (a real submit/search button or an autocomplete suggestion), or use 'navigate' with a direct URL like 'https://www.google.com/search?q=YOUR+QUERY'.`);
+                            } else if (plan.action === "type") {
+                                actionHistory.push(`[OBSERVATION] You typed "${(safePlanValue || "").substring(0, 40)}" and Enter was auto-pressed, but the URL did not change. If the search did not submit, click the search/submit button or an autocomplete suggestion — do NOT retype the same text.`);
+                            }
                         }
                     } catch (verifyErr) {
                         console.warn("[NanoAgent] Post-action verification failed:", verifyErr.message);
