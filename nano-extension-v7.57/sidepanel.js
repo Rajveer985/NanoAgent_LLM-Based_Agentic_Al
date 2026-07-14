@@ -452,6 +452,138 @@ CRITICAL OPSEC: DO NOT add any extra keys! DO NOT write arrays! Output ONLY this
     }
 }
 
+// ============================================================
+// 🧠 V9 CORE: CONVERSATIONAL AGENT ARCHITECTURE
+// The agent holds a true multi-turn conversation with the LLM
+// (like Claude Code) instead of rebuilding one giant stateless
+// prompt every step. The model remembers its own reasoning.
+// ============================================================
+
+function buildSystemPrompt(goal) {
+    return `YOU ARE A STRICT, SEQUENTIAL BROWSER AGENT ON A CONTINUOUS MISSION.
+USER GOAL: "${goal}"
+
+HOW THIS CONVERSATION WORKS:
+- Each user message is a fresh OBSERVATION of the browser (URL, tabs, system feedback, saved memory, visible elements).
+- You reply with EXACTLY ONE action as JSON (format below).
+- This is ONE continuous conversation. Remember what you already did in earlier turns. NEVER redo a completed step. NEVER restart the mission.
+
+STEP 0 — CLASSIFY THE TASK (silently, on your first turn):
+- NAVIGATION TASK: ONLY go somewhere or search. Done when the target is VISIBLE.
+- EXTRACTION TASK: FIND and REPORT info. Done ONLY AFTER extract_info on EVERY required target. Never extract the same fact twice.
+- ACTION TASK: DO something. Done ONLY when EVERY requested action is physically completed.
+- TRANSFER TASK: extract data AND paste it somewhere (like Google Sheets). Done ONLY AFTER the paste at the destination.
+- PLANNING TASK: 'plan', 'budget', 'research', 'compare'. Extract all relevant info AND store it (navigate to 'https://sheets.new', then inject_data).
+
+CRITICAL DIRECTIVES:
+1. MULTI-STEP RULE: Never declare "is_goal_met": true until EVERY phase is physically done.
+2. ADAPT: If a search fails or errors, pivot — new search terms, or a direct URL.
+3. MODAL DEFENSE: If you see [POPUP/MODAL ACTION], click it FIRST to dismiss the popup.
+4. SPREADSHEET INJECTION: 'inject_data' works ONLY on a Google Sheets/Excel page. Otherwise navigate to 'https://sheets.new' first.
+5. TAB RULE: A tab merely opening is not goal completion unless that was the only instruction.
+6. EFFICIENT URLS: Use direct URLs when you know them; otherwise navigate to the site and search.
+7. ONE ACTION PER TURN.
+8. TAB MANAGEMENT: 'new_tab' opens silently in the BACKGROUND. Read AVAILABLE TABS for the exact Tab Number, then 'switch_tab' to make it [ACTIVE]. Never guess tab numbers. You can only extract from the [ACTIVE] tab.
+9. MEDIA: To pause/play a video, click the player or its play/pause button, never a text input.
+10. NO REPEATS: Anything already in SAVED MEMORY must not be extracted again.
+11. SHORT REASONING: under 15 words, starting with "[NAVIGATION]", "[EXTRACTION]", or "[ACTION]".
+12. MEMORY DUMP: To paste everything saved in memory into Sheets, output exactly "value": "MEMORY".
+13. CLEAN EXTRACTIONS: For 'extract_info', 'value' MUST be the DISTILLED FACT ONLY (e.g. "iPhone 17 Pro: from $1099"), never raw page text or marketing filler. Max 200 chars.
+14. SEARCH SUBMIT: After 'type', the next action MUST be clicking the search button or an autocomplete suggestion. NEVER type the same text twice.
+15. NAV TABS ARE CLICKABLE: Short labels like "Hotels" or "Flights" are tabs to CLICK, never to extract.
+16. SEARCH RESULTS: If exact data is not in the snippets, CLICK a result link to enter the real site.
+17. FINISH: Once the goal is fully satisfied, your action MUST be 'finish'.
+18. DIRECT SEARCH URLS: If submitting a search failed twice, navigate to 'https://www.google.com/search?q=YOUR+QUERY' (spaces as +).
+19. TRUST FEEDBACK: SYSTEM FEEDBACK tells you the TRUE result of your last action. Obey it.
+
+RESPONSE FORMAT — EXACT JSON, nothing else, no extra keys, no arrays:
+{
+  "reasoning": "[TASK_TYPE] Brief 10-word summary",
+  "is_goal_met": true/false,
+  "action": "click" | "type" | "scroll" | "finish" | "new_tab" | "navigate" | "extract_info" | "switch_tab" | "inject_data",
+  "target_index": number (DOM index or Tab Number),
+  "value": "RAW TEXT ONLY (Max 200 chars). NO NEWLINES. ESCAPE ALL QUOTES."
+}`;
+}
+
+async function callAgentLLM(systemPrompt, conversation, apiKey, modelName, temperature, provider, baseUrl) {
+    let retries = 3;
+    let parseErrorHint = "";
+    while (retries > 0) {
+        try {
+            if (provider === "openai") {
+                const endpoint = baseUrl || "https://api.openai.com/v1/chat/completions";
+                const messages = [{ role: "system", content: systemPrompt }];
+                for (const turn of conversation) {
+                    messages.push({ role: turn.role === "model" ? "assistant" : "user", content: turn.text });
+                }
+                if (parseErrorHint) messages.push({ role: "user", content: parseErrorHint });
+                const response = await fetchWithTimeout(endpoint, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}` },
+                    body: JSON.stringify({ model: modelName, messages: messages, temperature: temperature, response_format: { type: "json_object" } })
+                }, 60000);
+                if (!response.ok) {
+                    if (response.status === 404) throw new Error(`HTTP 404 (Not Found): The Model or Endpoint does not exist.`);
+                    if (response.status === 402) throw new Error(`HTTP 402 (Payment Required): You have run out of credits on this provider.`);
+                    if (response.status === 401) throw new Error(`HTTP 401 (Unauthorized): Invalid API Key.`);
+                    let bodyMsg = "";
+                    try { const eData = await response.json(); bodyMsg = (eData && eData.error && eData.error.message) || ""; } catch (e) { }
+                    throw new Error(`HTTP ${response.status}: ${bodyMsg || "Server error or bad request."}`);
+                }
+                const data = await response.json();
+                if (data.error) throw new Error(data.error.message);
+                return parseAgentJSON(data.choices[0].message.content.trim());
+            } else {
+                let cleanModel = (modelName || "").trim().replace(/\s+/g, "");
+                let fullModelName = cleanModel.startsWith("models/") ? cleanModel : `models/${cleanModel}`;
+                const apiUrl = `https://generativelanguage.googleapis.com/v1beta/${fullModelName}:generateContent?key=${apiKey}`;
+                const contents = conversation.map(turn => ({ role: turn.role === "model" ? "model" : "user", parts: [{ text: turn.text }] }));
+                if (parseErrorHint && contents.length > 0 && contents[contents.length - 1].role === "user") {
+                    contents[contents.length - 1].parts[0].text += "\n\n" + parseErrorHint;
+                } else if (parseErrorHint) {
+                    contents.push({ role: "user", parts: [{ text: parseErrorHint }] });
+                }
+                let body = {
+                    systemInstruction: { parts: [{ text: systemPrompt }] },
+                    contents: contents,
+                    generationConfig: { responseMimeType: "application/json", temperature: temperature, thinkingConfig: { thinkingBudget: 0 } }
+                };
+                let response = await fetchWithTimeout(apiUrl, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }, 60000);
+                if (response.status === 400) {
+                    // Model rejects thinkingConfig — retry without it
+                    delete body.generationConfig.thinkingConfig;
+                    response = await fetchWithTimeout(apiUrl, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }, 60000);
+                }
+                if (!response.ok) {
+                    let exactErrorMsg = `HTTP ${response.status}: Server error or bad request.`;
+                    try {
+                        const errorData = await response.json();
+                        if (errorData && errorData.error && errorData.error.message) exactErrorMsg = `HTTP ${response.status}: ${errorData.error.message}`;
+                    } catch (e) { }
+                    if (response.status === 404) throw new Error(`HTTP 404 (Not Found): Model '${cleanModel}' not found.`);
+                    if (response.status === 401) throw new Error(`HTTP 401 (Unauthorized): Invalid API Key.`);
+                    throw new Error(exactErrorMsg);
+                }
+                const data = await response.json();
+                if (data.error) throw new Error(data.error.message);
+                return parseAgentJSON(data.candidates[0].content.parts[0].text.trim());
+            }
+        } catch (error) {
+            retries--;
+            if (retries === 0) throw error;
+            if (error instanceof SyntaxError) {
+                parseErrorHint = `[SYSTEM]: Your last response was invalid JSON (${error.message}). Reply again with ONLY the exact 5-property JSON object.`;
+            } else if (error.message.includes("404") || error.message.includes("401") || error.message.includes("limit: 0")) {
+                throw error;
+            }
+            const backoffMs = 2000 * Math.pow(2, 3 - retries);
+            console.log(`[NanoAgent] Retrying conversational LLM call in ${backoffMs / 1000}s...`);
+            await new Promise(resolve => setTimeout(resolve, backoffMs));
+        }
+    }
+}
+
 runBtn.onclick = async () => {
     keepRunning = true; actionHistory = []; agentMemory = [];
     let lastActionKey = "";
@@ -517,6 +649,9 @@ runBtn.onclick = async () => {
         });
 
     let recentActionKeys = [];
+    let conversation = [];      // 🧠 V9: the full multi-turn dialogue with the LLM — this IS the agent's memory
+    let lastFeedbackIndex = 0;  // pointer into actionHistory for incremental SYSTEM FEEDBACK
+    let planAnnounced = false;  // whether the mission plan has been delivered to the LLM yet
     for (let step = 1; step <= 25; step++) {
         if (!keepRunning) break;
         write(`[Step ${step}] Analyzing DOM...`, "debug");
@@ -586,13 +721,41 @@ runBtn.onclick = async () => {
             const activeRole = (step === 1) ? "PLANNER" : "NAVIGATOR";
             write(`${activeRole} -> ${activeModel}`, "debug");
 
-            const plan = await callLLM(goal, elements, apiKey, activeModel, actionHistory, agentMemory, tab.url, selectedTemp, selectedProvider, baseUrl, tabsListStr);
+            // 🧠 V9: Build this step's OBSERVATION turn — only NEW feedback since the last turn is included
+            if (lastFeedbackIndex > actionHistory.length) lastFeedbackIndex = Math.max(0, actionHistory.length - 1);
+            const newFeedback = actionHistory.slice(lastFeedbackIndex).join("\n");
+            lastFeedbackIndex = actionHistory.length;
+            const visibleElementsString = JSON.stringify(elements.map(e => `${e.index}: <${e.tag}> ${e.text} ${e.href ? '(URL: ' + e.href + ')' : ''}`));
+            let observation = `[STEP ${step} OBSERVATION]\nCURRENT URL: ${tab.url}\nAVAILABLE TABS: ${tabsListStr}`;
+            if (globalAgentPlan && !planAnnounced) { observation += `\nMISSION PLAN (follow step-by-step, adapt if a step fails):\n${globalAgentPlan}`; planAnnounced = true; }
+            if (newFeedback) observation += `\nSYSTEM FEEDBACK ON YOUR LAST ACTION:\n${newFeedback}`;
+            observation += `\nSAVED MEMORY (${agentMemory.length} items): ${agentMemory.slice(-10).join(" | ") || "(empty)"}`;
+            observation += `\nVISIBLE ELEMENTS:\n${visibleElementsString}`;
+            conversation.push({ role: "user", text: observation });
+
+            // 🧠 V9: Sliding context window — keep the opening exchange plus the most recent turns
+            if (conversation.length > 20) {
+                conversation = conversation.slice(0, 2).concat(conversation.slice(-14));
+            }
+
+            const plan = await callAgentLLM(buildSystemPrompt(goal), conversation, apiKey, activeModel, selectedTemp, selectedProvider, baseUrl);
+            conversation.push({ role: "model", text: JSON.stringify(plan) });
             write(plan.reasoning, "ai");
 
             async function wrapUpTask() {
                 write(`[DONE] Agent confirms task is complete: ${plan.value || ""}`, "debug");
                 if (agentMemory.length > 0) {
                     agentMemory.forEach(m => write(m, "result-card"));
+
+                    // 💾 V9: BULLETPROOF DELIVERY — always export results as a CSV download, regardless of Sheets quirks
+                    try {
+                        const csvHref = "data:text/csv;charset=utf-8," + encodeURIComponent(agentMemory.map(m => '"' + m.replace('[SAVE] ', '').replace(/"/g, '""') + '"').join("\n"));
+                        const a = document.createElement("a");
+                        a.href = csvHref; a.download = "nanoagent-results.csv"; a.click();
+                        write("[EXPORT] Results downloaded as nanoagent-results.csv", "debug");
+                    } catch (e) {
+                        console.warn("[NanoAgent] CSV export failed:", e.message);
+                    }
 
                     if (isPlanningTask) {
                         // 🧠 V7.57: AUTO-SHEETS FOR PLANNING TASKS 🧠
@@ -843,7 +1006,8 @@ runBtn.onclick = async () => {
                     }
                 }
 
-                if (!foundText && safePlanValue && safePlanValue.length > 3 && safePlanValue !== "[No Text]" && !safePlanValue.includes("[latest_")) {
+                // 🧠 V9: Prefer the LLM's DISTILLED fact over raw element text (clean data, no marketing filler)
+                if (safePlanValue && safePlanValue.length > 3 && safePlanValue !== "[No Text]" && !safePlanValue.includes("[latest_")) {
                     foundText = safePlanValue;
                 }
 
