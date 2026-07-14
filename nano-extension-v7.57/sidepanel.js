@@ -747,14 +747,17 @@ runBtn.onclick = async () => {
                 if (agentMemory.length > 0) {
                     agentMemory.forEach(m => write(m, "result-card"));
 
-                    // 💾 V9: BULLETPROOF DELIVERY — always export results as a CSV download, regardless of Sheets quirks
-                    try {
-                        const csvHref = "data:text/csv;charset=utf-8," + encodeURIComponent(agentMemory.map(m => '"' + m.replace('[SAVE] ', '').replace(/"/g, '""') + '"').join("\n"));
-                        const a = document.createElement("a");
-                        a.href = csvHref; a.download = "nanoagent-results.csv"; a.click();
-                        write("[EXPORT] Results downloaded as nanoagent-results.csv", "debug");
-                    } catch (e) {
-                        console.warn("[NanoAgent] CSV export failed:", e.message);
+                    // 💾 V9.1: SMART CSV EXPORT — only when the data volume justifies a file, or the user explicitly asked for one
+                    const wantsFile = /\b(csv|excel|spreadsheet|sheets?|download|export|save (to|as|in)|file)\b/i.test(goal);
+                    if (agentMemory.length >= 5 || wantsFile) {
+                        try {
+                            const csvHref = "data:text/csv;charset=utf-8," + encodeURIComponent(agentMemory.map(m => '"' + m.replace('[SAVE] ', '').replace(/"/g, '""') + '"').join("\n"));
+                            const a = document.createElement("a");
+                            a.href = csvHref; a.download = "nanoagent-results.csv"; a.click();
+                            write("[EXPORT] Results downloaded as nanoagent-results.csv", "debug");
+                        } catch (e) {
+                            console.warn("[NanoAgent] CSV export failed:", e.message);
+                        }
                     }
 
                     if (isPlanningTask) {
