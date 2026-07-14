@@ -262,6 +262,7 @@ async function generateMissionPlan(goal, apiKey, modelName, provider, baseUrl, t
         const data = await response.json();
         return (data.choices?.[0]?.message?.content || "").trim();
     } else {
+        modelName = (modelName || "").trim().replace(/\s+/g, ""); // 🛡️ V8.2: hidden whitespace in saved IDs causes fake 404s
         let fullModelName = modelName.startsWith("models/") ? modelName : `models/${modelName}`;
         const apiUrl = `https://generativelanguage.googleapis.com/v1beta/${fullModelName}:generateContent?key=${apiKey}`;
         // ⚡ V8.2: thinkingBudget 0 disables slow "thinking" on Gemini 2.5 models
@@ -374,6 +375,7 @@ CRITICAL OPSEC: DO NOT add any extra keys! DO NOT write arrays! Output ONLY this
                 }
                 return parseAgentJSON(contentText);
             } else {
+                modelName = (modelName || "").trim().replace(/\s+/g, ""); // 🛡️ V8.2: hidden whitespace in saved IDs causes fake 404s
                 let fullModelName = modelName.startsWith("models/") ? modelName : `models/${modelName}`;
                 const apiUrl = `https://generativelanguage.googleapis.com/v1beta/${fullModelName}:generateContent?key=${apiKey}`;
                 // ⚡ V8.2: thinkingBudget 0 disables slow "thinking" on Gemini 2.5 models (10-30s -> 1-2s per step)
