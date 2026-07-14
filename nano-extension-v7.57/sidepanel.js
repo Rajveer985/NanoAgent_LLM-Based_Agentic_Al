@@ -495,6 +495,8 @@ CRITICAL DIRECTIVES:
 17. FINISH: Once the goal is fully satisfied, your action MUST be 'finish'.
 18. DIRECT SEARCH URLS: If submitting a search failed twice, navigate to 'https://www.google.com/search?q=YOUR+QUERY' (spaces as +).
 19. TRUST FEEDBACK: SYSTEM FEEDBACK tells you the TRUE result of your last action. Obey it.
+20. ONE ITEM PER EXTRACTION: If the goal asks for N items (e.g. "best 5 phones"), you MUST extract EACH item as its OWN separate extract_info step with its name, price and key details (e.g. "Pixel 11 Pro: \u20b91,09,999 \u2014 6.8in OLED, Tensor G6, 50MP camera"). Cramming multiple items into one extraction is a FAILURE.
+21. GO DEEP, NOT SHALLOW: Search snippets and AI Overviews are ONLY for orientation. When the goal asks for costs, specs, ratings or details, you MUST click into a real review/retailer page and extract each item's details from there.
 
 RESPONSE FORMAT — EXACT JSON, nothing else, no extra keys, no arrays:
 {
@@ -842,6 +844,19 @@ runBtn.onclick = async () => {
                             write("[WHATSAPP] Delivery skipped.", "debug");
                         }
                     }
+                }
+            }
+
+            // 🧠 V9.2: COMPLETENESS GUARD — if the goal asks for N items, refuse "done" with fewer separate extractions
+            if (plan.is_goal_met === true || plan.action === "finish") {
+                const m1 = goal.match(/\b(?:top|best|first|list|find|get)\s+(\d{1,2})\b/i);
+                const m2 = goal.match(/\b(\d{1,2})\s+(?:best|top|items|results|products|phones|hotels|videos|links|sites|prices)\b/i);
+                const expectedCount = m1 ? parseInt(m1[1]) : (m2 ? parseInt(m2[1]) : 0);
+                if (expectedCount >= 2 && expectedCount <= 20 && agentMemory.length < expectedCount) {
+                    write(`[GUARD] Completion rejected: only ${agentMemory.length}/${expectedCount} items extracted. Forcing deeper extraction...`, "error");
+                    actionHistory.push(`[SYSTEM GUARD] COMPLETION REJECTED! The goal asks for ${expectedCount} items but SAVED MEMORY holds only ${agentMemory.length}. You MUST extract EACH of the ${expectedCount} items SEPARATELY — one extract_info per item, each with its name, price and key details. Click into a real review/store page if the current page only has a shallow summary. Do NOT output 'finish' again until all ${expectedCount} items are saved individually.`);
+                    await new Promise(r => setTimeout(r, 1500));
+                    continue;
                 }
             }
 
