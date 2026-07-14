@@ -484,7 +484,7 @@ runBtn.onclick = async () => {
 
     const selectedProvider = apiProvider || "gemini";
     const defaultModel = selectedProvider === "gemini" ? "gemini-1.5-flash" : "meta-llama/llama-3.3-70b-instruct:free";
-    const selectedPlanner = plannerModel || model || defaultModel;
+    let selectedPlanner = plannerModel || model || defaultModel;
     const selectedNavigator = navigatorModel || model || defaultModel;
     const selectedTemp = temperature !== undefined ? parseFloat(temperature) : 0.7;
 
@@ -1247,6 +1247,12 @@ runBtn.onclick = async () => {
             if (err.message.includes("QUOTA_EXCEEDED") || err.message.includes("429")) {
                 // 💀 V8.1: FAIL-FAST — "limit: 0" means this model has ZERO quota on this key. Retrying is pointless.
                 if (err.message.includes("limit: 0")) {
+                    // 🧠 V8.3: AUTO-FALLBACK — if only the PLANNER model is quota-dead, demote planning to the Navigator model and keep going
+                    if (step === 1 && selectedPlanner !== selectedNavigator) {
+                        write(`[FALLBACK] Planner model has ZERO quota on this key. Demoting planning to Navigator model (${selectedNavigator})...`, "error");
+                        selectedPlanner = selectedNavigator;
+                        step--; continue;
+                    }
                     write("[STOP] Your API key has ZERO quota for this model (limit: 0). Waiting will NOT help. Open Settings and pick a model your plan actually supports.", "error");
                     break;
                 }
