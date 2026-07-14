@@ -264,11 +264,22 @@ async function generateMissionPlan(goal, apiKey, modelName, provider, baseUrl, t
     } else {
         let fullModelName = modelName.startsWith("models/") ? modelName : `models/${modelName}`;
         const apiUrl = `https://generativelanguage.googleapis.com/v1beta/${fullModelName}:generateContent?key=${apiKey}`;
-        const response = await fetchWithTimeout(apiUrl, {
+        // ⚡ V8.2: thinkingBudget 0 disables slow "thinking" on Gemini 2.5 models
+        let planBody = { contents: [{ parts: [{ text: planPrompt }] }], generationConfig: { temperature: temperature, maxOutputTokens: 800, thinkingConfig: { thinkingBudget: 0 } } };
+        let response = await fetchWithTimeout(apiUrl, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ contents: [{ parts: [{ text: planPrompt }] }], generationConfig: { temperature: temperature, maxOutputTokens: 800 } })
+            body: JSON.stringify(planBody)
         }, 20000);
+        if (response.status === 400) {
+            // Model rejects thinkingConfig (older non-thinking model) — retry without it
+            delete planBody.generationConfig.thinkingConfig;
+            response = await fetchWithTimeout(apiUrl, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(planBody)
+            }, 20000);
+        }
         if (!response.ok) throw new Error(`Planner HTTP ${response.status}`);
         const data = await response.json();
         return (data.candidates?.[0]?.content?.parts?.[0]?.text || "").trim();
@@ -365,14 +376,25 @@ CRITICAL OPSEC: DO NOT add any extra keys! DO NOT write arrays! Output ONLY this
             } else {
                 let fullModelName = modelName.startsWith("models/") ? modelName : `models/${modelName}`;
                 const apiUrl = `https://generativelanguage.googleapis.com/v1beta/${fullModelName}:generateContent?key=${apiKey}`;
-                const response = await fetchWithTimeout(apiUrl, {
+                // ⚡ V8.2: thinkingBudget 0 disables slow "thinking" on Gemini 2.5 models (10-30s -> 1-2s per step)
+                let geminiBody = {
+                    contents: [{ parts: [{ text: prompt + parseErrorHint }] }],
+                    generationConfig: { responseMimeType: "application/json", temperature: temperature, thinkingConfig: { thinkingBudget: 0 } }
+                };
+                let response = await fetchWithTimeout(apiUrl, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                        contents: [{ parts: [{ text: prompt + parseErrorHint }] }],
-                        generationConfig: { responseMimeType: "application/json", temperature: temperature }
-                    })
+                    body: JSON.stringify(geminiBody)
                 }, 60000);
+                if (response.status === 400) {
+                    // Model rejects thinkingConfig (older non-thinking model) — retry without it
+                    delete geminiBody.generationConfig.thinkingConfig;
+                    response = await fetchWithTimeout(apiUrl, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify(geminiBody)
+                    }, 60000);
+                }
 
                 // 💥 V7.57: TRUTH TELLER ERROR CATCHER 💥
                 if (!response.ok) {
@@ -469,15 +491,20 @@ runBtn.onclick = async () => {
     write(`[NAVIGATOR] ${selectedNavigator}`, "debug");
     write(goal, "user");
 
-    // 🧠 V8: STRUCTURED PLANNING — generate an explicit mission plan before acting
+    // 🧠 V8.2: NON-BLOCKING PLANNING — the plan generates in the background while Step 1 starts immediately.
+    // As soon as it arrives, it is injected into every subsequent step's prompt via globalAgentPlan.
     globalAgentPlan = "";
-    try {
-        write("[PLANNER] Generating mission plan...", "debug");
-        globalAgentPlan = await generateMissionPlan(goal, apiKey, selectedPlanner, selectedProvider, baseUrl, selectedTemp);
-        if (globalAgentPlan) write(`Mission Plan:\n${globalAgentPlan}`, "ai");
-    } catch (planErr) {
-        write(`[PLANNER] Plan generation failed (${planErr.message}). Continuing without an explicit plan.`, "debug");
-    }
+    write("[PLANNER] Generating mission plan in background...", "debug");
+    generateMissionPlan(goal, apiKey, selectedPlanner, selectedProvider, baseUrl, selectedTemp)
+        .then(planText => {
+            if (planText) {
+                globalAgentPlan = planText;
+                write(`Mission Plan:\n${planText}`, "ai");
+            }
+        })
+        .catch(planErr => {
+            write(`[PLANNER] Plan generation failed (${planErr.message}). Continuing without an explicit plan.`, "debug");
+        });
 
     let recentActionKeys = [];
     for (let step = 1; step <= 25; step++) {
