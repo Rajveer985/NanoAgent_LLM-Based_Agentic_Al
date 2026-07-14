@@ -248,7 +248,7 @@ document.getElementById('target-form').addEventListener('submit', async (e) => {
 
     setTimeout(() => {
         btn.textContent = originalText;
-        btn.style.backgroundColor = '#0891b2'; // cyan
+        btn.style.backgroundColor = '#d97757'; // theme terracotta
         btn.disabled = false;
     }, 2000);
 });
@@ -282,7 +282,7 @@ if (sendTestBtn) {
 
         setTimeout(() => {
             sendTestBtn.textContent = originalText;
-            sendTestBtn.style.backgroundColor = '#4f46e5';
+            sendTestBtn.style.backgroundColor = '#d97757'; // theme terracotta
             sendTestBtn.disabled = false;
         }, 3000);
     });
