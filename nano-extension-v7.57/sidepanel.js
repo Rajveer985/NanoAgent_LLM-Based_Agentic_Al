@@ -654,6 +654,7 @@ runBtn.onclick = async () => {
     let conversation = [];      // 🧠 V9: the full multi-turn dialogue with the LLM — this IS the agent's memory
     let lastFeedbackIndex = 0;  // pointer into actionHistory for incremental SYSTEM FEEDBACK
     let planAnnounced = false;  // whether the mission plan has been delivered to the LLM yet
+    let guardRejections = 0;    // 🛡️ V9.3: circuit breaker for the completeness guard
     for (let step = 1; step <= 25; step++) {
         if (!keepRunning) break;
         write(`[Step ${step}] Analyzing DOM...`, "debug");
@@ -853,10 +854,24 @@ runBtn.onclick = async () => {
                 const m2 = goal.match(/\b(\d{1,2})\s+(?:best|top|items|results|products|phones|hotels|videos|links|sites|prices)\b/i);
                 const expectedCount = m1 ? parseInt(m1[1]) : (m2 ? parseInt(m2[1]) : 0);
                 if (expectedCount >= 2 && expectedCount <= 20 && agentMemory.length < expectedCount) {
-                    write(`[GUARD] Completion rejected: only ${agentMemory.length}/${expectedCount} items extracted. Forcing deeper extraction...`, "error");
-                    actionHistory.push(`[SYSTEM GUARD] COMPLETION REJECTED! The goal asks for ${expectedCount} items but SAVED MEMORY holds only ${agentMemory.length}. You MUST extract EACH of the ${expectedCount} items SEPARATELY — one extract_info per item, each with its name, price and key details. Click into a real review/store page if the current page only has a shallow summary. Do NOT output 'finish' again until all ${expectedCount} items are saved individually.`);
-                    await new Promise(r => setTimeout(r, 1500));
-                    continue;
+                    const isClosingClaim = plan.action === "finish" || plan.action === "none" || plan.action === "complete";
+                    if (isClosingClaim) {
+                        guardRejections++;
+                        // 🛡️ V9.3: CIRCUIT BREAKER — never argue with the model forever; protect the user's quota
+                        if (guardRejections >= 3) {
+                            write(`[GUARD] ${guardRejections} rejected completions — accepting partial results (${agentMemory.length}/${expectedCount}) to protect your API quota.`, "error");
+                            await wrapUpTask();
+                            break;
+                        }
+                        write(`[GUARD] Completion rejected: only ${agentMemory.length}/${expectedCount} items extracted. Forcing deeper extraction...`, "error");
+                        actionHistory.push(`[SYSTEM GUARD] COMPLETION REJECTED! The goal asks for ${expectedCount} items but SAVED MEMORY holds only ${agentMemory.length}. Your NEXT action must be a productive one: scroll, navigate, or extract_info on the missing item(s) — one extract_info per item with name, price and key details. Do NOT output 'finish' again until all ${expectedCount} items are saved.`);
+                        await new Promise(r => setTimeout(r, 1500));
+                        continue;
+                    } else {
+                        // 🛡️ V9.3: Productive action with a premature "goal met" claim — EXECUTE the action, only cancel the completion
+                        plan.is_goal_met = false;
+                        actionHistory.push(`[SYSTEM GUARD] Note: only ${agentMemory.length}/${expectedCount} items saved so far. Your action was executed, but the mission is NOT complete — keep extracting each remaining item separately before finishing.`);
+                    }
                 }
             }
 
