@@ -216,6 +216,20 @@ function DOMScanner(showOverlays) {
     });
 }
 
+// ⏱️ V8.1: fetch with a hard timeout so the agent can never hang forever on a stalled API
+async function fetchWithTimeout(url, options, timeoutMs) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+        return await fetch(url, Object.assign({}, options, { signal: controller.signal }));
+    } catch (err) {
+        if (err.name === "AbortError") throw new Error(`Request timed out after ${timeoutMs / 1000}s`);
+        throw err;
+    } finally {
+        clearTimeout(timer);
+    }
+}
+
 // 🧠 V8: Robust JSON parsing with repair passes for malformed LLM responses
 function parseAgentJSON(text) {
     let cleaned = text.trim();
@@ -239,22 +253,22 @@ async function generateMissionPlan(goal, apiKey, modelName, provider, baseUrl, t
     const planPrompt = `You are the PLANNER brain of an autonomous browser agent.\nUSER GOAL: "${goal}"\n\nWrite a short, numbered step-by-step plan (max 6 steps) for how a browser agent should complete this goal.\nEach step must be one concrete browser-level action (navigate, search, click, extract, paste, verify).\nEnd with a final step stating the SUCCESS CRITERIA (how the agent knows it is done).\nOutput PLAIN TEXT ONLY (the numbered list). No JSON, no markdown.`;
     if (provider === "openai") {
         const endpoint = baseUrl || "https://api.openai.com/v1/chat/completions";
-        const response = await fetch(endpoint, {
+        const response = await fetchWithTimeout(endpoint, {
             method: "POST",
             headers: { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}` },
-            body: JSON.stringify({ model: modelName, messages: [{ role: "user", content: planPrompt }], temperature: temperature })
-        });
+            body: JSON.stringify({ model: modelName, messages: [{ role: "user", content: planPrompt }], temperature: temperature, max_tokens: 500 })
+        }, 20000);
         if (!response.ok) throw new Error(`Planner HTTP ${response.status}`);
         const data = await response.json();
         return (data.choices?.[0]?.message?.content || "").trim();
     } else {
         let fullModelName = modelName.startsWith("models/") ? modelName : `models/${modelName}`;
         const apiUrl = `https://generativelanguage.googleapis.com/v1beta/${fullModelName}:generateContent?key=${apiKey}`;
-        const response = await fetch(apiUrl, {
+        const response = await fetchWithTimeout(apiUrl, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ contents: [{ parts: [{ text: planPrompt }] }], generationConfig: { temperature: temperature } })
-        });
+            body: JSON.stringify({ contents: [{ parts: [{ text: planPrompt }] }], generationConfig: { temperature: temperature, maxOutputTokens: 800 } })
+        }, 20000);
         if (!response.ok) throw new Error(`Planner HTTP ${response.status}`);
         const data = await response.json();
         return (data.candidates?.[0]?.content?.parts?.[0]?.text || "").trim();
@@ -321,7 +335,7 @@ CRITICAL OPSEC: DO NOT add any extra keys! DO NOT write arrays! Output ONLY this
         try {
             if (provider === "openai") {
                 const endpoint = baseUrl || "https://api.openai.com/v1/chat/completions";
-                const response = await fetch(endpoint, {
+                const response = await fetchWithTimeout(endpoint, {
                     method: "POST",
                     headers: { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}` },
                     body: JSON.stringify({
@@ -330,7 +344,7 @@ CRITICAL OPSEC: DO NOT add any extra keys! DO NOT write arrays! Output ONLY this
                         temperature: temperature,
                         response_format: { type: "json_object" }
                     })
-                });
+                }, 60000);
 
                 // 💥 V7.57: TRUTH TELLER ERROR CATCHER 💥
                 if (!response.ok) {
@@ -351,14 +365,14 @@ CRITICAL OPSEC: DO NOT add any extra keys! DO NOT write arrays! Output ONLY this
             } else {
                 let fullModelName = modelName.startsWith("models/") ? modelName : `models/${modelName}`;
                 const apiUrl = `https://generativelanguage.googleapis.com/v1beta/${fullModelName}:generateContent?key=${apiKey}`;
-                const response = await fetch(apiUrl, {
+                const response = await fetchWithTimeout(apiUrl, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({
                         contents: [{ parts: [{ text: prompt + parseErrorHint }] }],
                         generationConfig: { responseMimeType: "application/json", temperature: temperature }
                     })
-                });
+                }, 60000);
 
                 // 💥 V7.57: TRUTH TELLER ERROR CATCHER 💥
                 if (!response.ok) {
@@ -1202,8 +1216,17 @@ runBtn.onclick = async () => {
             // 💥 V7.57: EXPLICIT ERROR ROUTING 💥
             write(`System Error: ${err.message}`, "error");
             if (err.message.includes("QUOTA_EXCEEDED") || err.message.includes("429")) {
-                write("[WAIT] API Quota hit. Pausing for 10s...", "error");
-                for (let w = 0; w < 10; w++) {
+                // 💀 V8.1: FAIL-FAST — "limit: 0" means this model has ZERO quota on this key. Retrying is pointless.
+                if (err.message.includes("limit: 0")) {
+                    write("[STOP] Your API key has ZERO quota for this model (limit: 0). Waiting will NOT help. Open Settings and pick a model your plan actually supports.", "error");
+                    break;
+                }
+                // ⏳ V8.1: Respect the server's suggested retry delay when it tells us one
+                let waitSec = 10;
+                const retryMatch = err.message.match(/retry in ([\d.]+)\s*s/i);
+                if (retryMatch) waitSec = Math.min(Math.ceil(parseFloat(retryMatch[1])) + 1, 60);
+                write(`[WAIT] API Quota hit. Pausing for ${waitSec}s...`, "error");
+                for (let w = 0; w < waitSec; w++) {
                     if (!keepRunning) break;
                     await new Promise(r => setTimeout(r, 1000));
                 }
