@@ -203,7 +203,7 @@ function DOMScanner(showOverlays) {
                 || (el.getAttribute("name") || "").trim();
         }
 
-        text = text.substring(0, 70).replace(/\n/g, " ");
+        text = text.substring(0, 120).replace(/\n/g, " "); // 🧠 V8.6: 70 chars cut prices off mid-string — give the LLM more to read
         let fullHref = el.href || "";
         let displayHref = fullHref.length > 60 ? fullHref.substring(0, 60) + "..." : fullHref;
 
@@ -606,45 +606,56 @@ runBtn.onclick = async () => {
                             // Build the memory dump as tab-separated rows
                             const memoryDump = agentMemory.map(m => m.replace('[SAVE] ', '')).join('\n\n');
 
-                            // Inject the data into the sheet using clipboard simulation
-                            await chrome.scripting.executeScript({
+                            // 🛠️ V8.6: Use the proven synthetic ClipboardEvent method (same as inject_data).
+                            // The old navigator.clipboard + execCommand('paste') approach silently fails in page context.
+                            const injectResults = await chrome.scripting.executeScript({
                                 target: { tabId: sheetsTab.id },
                                 world: "MAIN",
                                 func: async (data) => {
                                     return new Promise(async (resolve) => {
                                         try {
-                                            // Click center of sheet to find active cell
+                                            // Find the active cell and focus it with a real click sequence
                                             let targetX = window.innerWidth / 2;
                                             let targetY = window.innerHeight / 2;
-                                            const activeCell = document.querySelector('.cell-input, [data-type="cell"], .editable-cell, #cell-editor, .waffle-content-area');
+                                            const activeCell = document.querySelector(".autofill-cover") ||
+                                                document.querySelector(".cell-selection") ||
+                                                document.querySelector(".active-cell-border");
                                             if (activeCell) {
                                                 const r = activeCell.getBoundingClientRect();
                                                 targetX = r.left + r.width / 2;
                                                 targetY = r.top + r.height / 2;
                                             }
-
-                                            // Focus click
-                                            ['mousedown', 'mouseup', 'click'].forEach(type => {
-                                                document.elementFromPoint(targetX, targetY)?.dispatchEvent(
-                                                    new MouseEvent(type, { clientX: targetX, clientY: targetY, bubbles: true, cancelable: true })
-                                                );
+                                            const canvas = document.elementFromPoint(targetX, targetY);
+                                            const activeTarget = canvas || document.activeElement || document.body;
+                                            if (canvas) {
+                                                canvas.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, clientX: targetX, clientY: targetY }));
+                                                canvas.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, clientX: targetX, clientY: targetY }));
+                                                await new Promise(r => setTimeout(r, 200));
+                                            }
+                                            const dataTransfer = new DataTransfer();
+                                            dataTransfer.setData('text/plain', data);
+                                            const pasteEvent = new ClipboardEvent('paste', {
+                                                clipboardData: dataTransfer, bubbles: true, cancelable: true, composed: true
                                             });
-                                            await new Promise(r => setTimeout(r, 500));
-
-                                            // Clipboard paste
-                                            const blob = new Blob([data], { type: 'text/plain' });
-                                            const clipboardItem = new ClipboardItem({ 'text/plain': blob });
-                                            await navigator.clipboard.write([clipboardItem]);
-                                            document.execCommand('paste');
+                                            (document.activeElement || activeTarget).dispatchEvent(pasteEvent);
+                                            try { document.execCommand('insertText', false, data); } catch (e) { }
+                                            await new Promise(r => setTimeout(r, 300));
+                                            (document.activeElement || activeTarget).dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', keyCode: 13, bubbles: true, composed: true }));
                                             resolve({ success: true });
-                                        } catch(e) {
+                                        } catch (e) {
                                             resolve({ success: false, error: e.message });
                                         }
                                     });
                                 },
                                 args: [memoryDump]
                             });
-                            write(`[SHEETS] ✅ All ${agentMemory.length} items saved to Google Sheets!`, "debug");
+                            // 🛠️ V8.6: HONEST REPORTING — check the actual result instead of always claiming success
+                            const injectOutcome = injectResults && injectResults[0] && injectResults[0].result;
+                            if (injectOutcome && injectOutcome.success) {
+                                write(`[SHEETS] ✅ Pasted ${agentMemory.length} items into Google Sheets — please verify the sheet contents.`, "debug");
+                            } else {
+                                write(`[SHEETS] ⚠️ Paste may have FAILED (${(injectOutcome && injectOutcome.error) || "no result returned"}). Your data is safe in the result cards above — copy it manually if the sheet is empty.`, "error");
+                            }
                         } catch(e) {
                             write(`[SHEETS] Auto-save failed: ${e.message}. Data is still in memory.`, "error");
                         }
